@@ -1,0 +1,73 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+venv.bak/
+virtualenv/
+
+# Environment variables / secrets
+.env
+*.env
+.env.*
+secrets.json
+*_secret*
+*credentials*
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.sw?
+.vs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+*.tmp
+
+# Compiled / distribution
+*.egg-info/
+dist/
+build/
+.cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+.tox/
+.nox/
+
+# Downloads / output folders
+downloads/*
+!downloads/.gitkeep
+
+# Backup files
+*.bak
+*.backup
+
+# Node
+node_modules/
+
+# Sensitive config files
+deployment_config.json
+
+# Sensitive config files
+deployment_config.json
+
+# Sensitive config files
+deployment_config.json
+# Sensitive config
+deployment_config.json

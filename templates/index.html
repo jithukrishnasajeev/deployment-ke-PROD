@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iFlight Neo - Deployment Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="animated-bg">
+        <div class="gradient-sphere sphere-1"></div>
+        <div class="gradient-sphere sphere-2"></div>
+        <div class="gradient-sphere sphere-3"></div>
+    </div>
+    
+    <!-- Particle Canvas -->
+    <canvas id="particle-canvas"></canvas>
+
+    <!-- Top Header Bar -->
+    <header class="top-header">
+        <div class="header-left">
+            <div class="logo">
+                <i class="bi bi-rocket-takeoff-fill"></i>
+                <span>iFlight Neo</span>
+            </div>
+            <span class="header-divider"></span>
+            <span class="header-subtitle">Deployment Dashboard</span>
+        </div>
+        <div class="header-right">
+            <div class="status-indicator" id="status-badge">
+                <span class="status-dot"></span>
+                <span class="status-text">Ready</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main 3-Column Layout -->
+    <main class="main-container">
+        <!-- LEFT COLUMN - Configuration -->
+        <aside class="column column-left" data-column="left">
+            <!-- Fullscreen Header (visible only in fullscreen mode) -->
+            <div class="config-fullscreen-header">
+                <div class="config-header-left">
+                    <div class="config-header-logo">
+                        <i class="bi bi-rocket-takeoff-fill"></i>
+                        <span>iFlight Neo</span>
+                    </div>
+                    <div class="config-header-divider"></div>
+                    <span class="config-header-title">System Configuration</span>
+                </div>
+                <div class="config-header-right">
+                    <div class="config-header-status">
+                        <i class="bi bi-shield-check"></i>
+                        <span>Secure Mode</span>
+                    </div>
+                    <button class="btn-close-config" onclick="closeConfigFullscreen()">
+                        <i class="bi bi-arrow-left"></i>
+                        <span>Back to Deploy</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Tab Navigation -->
+            <div class="tab-navigation">
+                <button class="tab-btn active" onclick="switchTab('deploy')" data-tab="deploy">
+                    <i class="bi bi-rocket-takeoff"></i>
+                    <span>Quick Deploy</span>
+                </button>
+                <button class="tab-btn" onclick="switchTab('config')" data-tab="config">
+                    <i class="bi bi-gear-fill"></i>
+                    <span>Configuration</span>
+                </button>
+            </div>
+
+            <!-- Tab Content Container -->
+            <div class="tab-content-wrapper">
+                <!-- DEPLOY TAB -->
+                <div id="deploy-tab" class="tab-content active">
+                    <div class="tab-content-scroll">
+                        <!-- Version Input -->
+            <div class="config-section">
+                <label class="config-label">
+                    <i class="bi bi-tag-fill"></i> Version
+                </label>
+                <div class="input-with-icon">
+                    <input type="text" class="config-input" id="version-input" placeholder="3.96.34.244">
+                    <button class="input-icon-btn" id="version-info-btn" title="Version Info">
+                        <i class="bi bi-info-circle"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Server Config -->
+            <div class="config-section">
+                <label class="config-label">
+                    <i class="bi bi-hdd-network-fill"></i> Source Server
+                </label>
+                <input type="text" class="config-input readonly" id="source-server" readonly>
+            </div>
+
+            <div class="config-section">
+                <label class="config-label">
+                    <i class="bi bi-cloud-fill"></i> Target Server
+                </label>
+                <input type="text" class="config-input editable" id="target-server" placeholder="PAM_NV.ibsplc.aero">
+            </div>
+
+            <div class="config-section">
+                <label class="config-label">
+                    <i class="bi bi-person-badge-fill"></i> Username
+                </label>
+                <input type="text" class="config-input editable" id="target-username" placeholder="user@domain%context%ip">
+            </div>
+
+            <div class="config-section">
+                <label class="config-label">
+                    <i class="bi bi-folder-fill"></i> Local Path
+                </label>
+                <input type="text" class="config-input readonly small-text" id="local-path" readonly>
+            </div>
+
+            <!-- WAR Files Selection -->
+            <div class="section-divider"></div>
+            <div class="config-section">
+                <div class="section-header-with-actions">
+                    <label class="config-label">
+                        <i class="bi bi-archive-fill"></i> WAR Files
+                    </label>
+                    <div class="mini-actions">
+                        <button class="mini-btn" onclick="selectAll()" title="Select All">
+                            <i class="bi bi-check-all"></i>
+                        </button>
+                        <button class="mini-btn" onclick="deselectAll()" title="Deselect All">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="war-files-list" class="war-files-grid">
+                    <!-- WAR files loaded dynamically -->
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="section-divider"></div>
+            <div class="action-buttons">
+                <button class="action-btn primary" id="deploy-btn" onclick="startDeployment()">
+                    <i class="bi bi-rocket-takeoff-fill"></i>
+                    <span>Deploy All</span>
+                </button>
+                <div class="action-row">
+                    <button class="action-btn secondary" id="step1-btn" onclick="runStep(1)">
+                        <i class="bi bi-cloud-download"></i>
+                        <span>Step 1: Download</span>
+                    </button>
+                    <button class="action-btn secondary" id="step2-btn" onclick="runStep(2)">
+                        <i class="bi bi-cloud-upload"></i>
+                        <span>Step 2: Upload</span>
+                    </button>
+                    <button class="action-btn secondary" id="step3-btn" onclick="runStep(3)">
+                        <i class="bi bi-folder-symlink"></i>
+                        <span>Step 3: Deploy</span>
+                    </button>
+                </div>
+                <div class="action-row">
+                    <button class="action-btn outline" onclick="runSteps([1,2])" style="font-size: 11px;">
+                        <i class="bi bi-lightning-charge"></i>
+                        <span>Quick: Step 1+2</span>
+                    </button>
+                    <button class="action-btn outline" onclick="runSteps([2,3])" style="font-size: 11px;">
+                        <i class="bi bi-lightning-charge"></i>
+                        <span>Quick: Step 2+3</span>
+                    </button>
+                </div>
+                <div class="action-row">
+                    <button class="action-btn outline" onclick="checkServerConnection()">
+                        <i class="bi bi-wifi"></i>
+                        <span>Test</span>
+                    </button>
+                    <button class="action-btn danger" onclick="cancelDeployment()">
+                        <i class="bi bi-stop-fill"></i>
+                        <span>Cancel</span>
+                    </button>
+                </div>
+                <label class="bypass-checkbox">
+                    <input type="checkbox" id="bypass-network">
+                    <span>Bypass network checks</span>
+                </label>
+            </div>
+                    </div>
+                </div>
+                
+                <!-- CONFIG TAB -->
+                <div id="config-tab" class="tab-content">
+                    <div class="tab-content-scroll">
+                        <!-- Hero Header -->
+                        <div class="config-hero">
+                            <div class="config-hero-content">
+                                <div class="config-hero-icon">
+                                    <i class="bi bi-sliders2-vertical"></i>
+                                </div>
+                                <div class="config-hero-text">
+                                    <h2>System Configuration</h2>
+                                    <p>Manage deployment settings and server connections</p>
+                                </div>
+                            </div>
+                            <div class="config-hero-badge">
+                                <i class="bi bi-shield-check"></i>
+                                <span>Secure</span>
+                            </div>
+                        </div>
+
+                        <!-- Grid Layout for Cards -->
+                        <div class="config-grid">
+                            <!-- Source Server Card -->
+                            <div class="config-card">
+                                <div class="config-card-header">
+                                    <div class="card-icon source">
+                                        <i class="bi bi-hdd-network-fill"></i>
+                                    </div>
+                                    <div class="card-title">
+                                        <h3>Source Server</h3>
+                                        <span class="card-subtitle">Build artifact server</span>
+                                    </div>
+                                </div>
+                                <div class="config-card-body">
+                                    <div class="input-field">
+                                        <label><i class="bi bi-globe"></i> Host</label>
+                                        <input type="text" id="cfg-source-host" placeholder="10.246.26.148">
+                                    </div>
+                                    <div class="input-row">
+                                        <div class="input-field">
+                                            <label><i class="bi bi-person"></i> Username</label>
+                                            <input type="text" id="cfg-source-username" placeholder="a-10266">
+                                        </div>
+                                        <div class="input-field small">
+                                            <label><i class="bi bi-ethernet"></i> Port</label>
+                                            <input type="number" id="cfg-source-port" value="22">
+                                        </div>
+                                    </div>
+                                    <div class="input-field">
+                                        <label><i class="bi bi-arrow-left-right"></i> Switch User</label>
+                                        <input type="text" id="cfg-source-switch-user" placeholder="iflight_user">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Target Server Card (Routes) -->
+                            <div class="config-card">
+                                <div class="config-card-header">
+                                    <div class="card-icon target">
+                                        <i class="bi bi-cloud-upload-fill"></i>
+                                    </div>
+                                    <div class="card-title">
+                                        <h3>Target Server Routes</h3>
+                                        <span class="card-subtitle">Multiple PAM routes for load distribution</span>
+                                    </div>
+                                </div>
+                                <div class="config-card-body">
+                                    <div class="input-field small">
+                                        <label><i class="bi bi-ethernet"></i> Port</label>
+                                        <input type="number" id="cfg-target-port" value="22" placeholder="22">
+                                    </div>
+                                    <div style="margin-top: 15px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <label style="margin: 0; font-size: 13px; color: var(--text-secondary);"><i class="bi bi-diagram-3"></i> Routes</label>
+                                            <button class="mini-btn" onclick="addTargetRoute()" title="Add Route">
+                                                <i class="bi bi-plus-lg"></i>
+                                                <span>Add</span>
+                                            </button>
+                                        </div>
+                                        <div id="target-routes-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Paths Section -->
+                        <div class="config-section-large">
+                            <div class="section-header-large">
+                                <div class="section-icon">
+                                    <i class="bi bi-folder-symlink-fill"></i>
+                                </div>
+                                <div class="section-title-large">
+                                    <h3>Directory Paths</h3>
+                                    <p>Configure source and destination directories</p>
+                                </div>
+                            </div>
+                            <div class="paths-grid">
+                                <div class="path-item">
+                                    <div class="path-label">
+                                        <i class="bi bi-folder-fill"></i>
+                                        <span>Local Downloads</span>
+                                    </div>
+                                    <input type="text" id="cfg-local-path" placeholder="D:\RMT_TOOLS\Deployment_KE\downloads">
+                                </div>
+                                <div class="path-item">
+                                    <div class="path-label">
+                                        <i class="bi bi-box-arrow-down"></i>
+                                        <span>Source Base</span>
+                                    </div>
+                                    <input type="text" id="cfg-source-base" placeholder="/iflightneo/S3_BUILD/NonMS/KE">
+                                </div>
+                                <div class="path-item">
+                                    <div class="path-label">
+                                        <i class="bi bi-tools"></i>
+                                        <span>Target Utilities</span>
+                                    </div>
+                                    <input type="text" id="cfg-target-utilities" placeholder="/iflightneo/global/Utilities">
+                                </div>
+                                <div class="path-item">
+                                    <div class="path-label">
+                                        <i class="bi bi-box-arrow-up"></i>
+                                        <span>Deployment Base</span>
+                                    </div>
+                                    <input type="text" id="cfg-target-deploy-base" placeholder="/iflightneo/global/PROD/ifl_prod_KE_crew/NonMS/Deployments">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Security & Credentials Section -->
+                        <div class="config-section-large security-section">
+                            <div class="section-header-large">
+                                <div class="section-icon security">
+                                    <i class="bi bi-shield-lock-fill"></i>
+                                </div>
+                                <div class="section-title-large">
+                                    <h3>Security & Credentials</h3>
+                                    <p>Update server passwords (stored in .env file)</p>
+                                </div>
+                            </div>
+                            <div class="security-warning">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                <div>
+                                    <strong>Security Note:</strong> Passwords are encrypted and stored in your local .env file.<br>
+                                    Never share your .env file or commit it to version control.
+                                </div>
+                            </div>
+                            <div class="passwords-grid">
+                                <div class="password-item">
+                                    <div class="password-label">
+                                        <i class="bi bi-key-fill"></i>
+                                        <span>Source Server Password</span>
+                                    </div>
+                                    <div class="password-input-group">
+                                        <input type="password" id="cfg-source-password" placeholder="••••••••••">
+                                        <button class="btn-toggle-password" onclick="togglePassword('cfg-source-password')" title="Show/Hide">
+                                            <i class="bi bi-eye-fill"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="password-item">
+                                    <div class="password-label">
+                                        <i class="bi bi-key-fill"></i>
+                                        <span>Target Server Password</span>
+                                    </div>
+                                    <div class="password-input-group">
+                                        <input type="password" id="cfg-target-password" placeholder="••••••••••">
+                                        <button class="btn-toggle-password" onclick="togglePassword('cfg-target-password')" title="Show/Hide">
+                                            <i class="bi bi-eye-fill"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="security-actions">
+                                <button class="security-btn" onclick="savePasswords()">
+                                    <i class="bi bi-shield-check"></i>
+                                    <span>Update Passwords</span>
+                                </button>
+                                <button class="security-btn secondary" onclick="clearPasswordFields()">
+                                    <i class="bi bi-x-circle"></i>
+                                    <span>Clear Fields</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- WAR Mappings Section -->
+                        <div class="config-section-large">
+                            <div class="section-header-large">
+                                <div class="section-icon">
+                                    <i class="bi bi-diagram-3-fill"></i>
+                                </div>
+                                <div class="section-title-large">
+                                    <h3>WAR File Mappings</h3>
+                                    <p>Map WAR files to deployment folders</p>
+                                </div>
+                                <button class="btn-add-small" onclick="addWarMapping()">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
+                            <div class="mappings-table">
+                                <div class="mappings-table-header">
+                                    <span>WAR Prefix</span>
+                                    <span>Deployment Folder</span>
+                                    <span>Action</span>
+                                </div>
+                                <div id="war-mappings-list" class="mappings-table-body">
+                                    <!-- Dynamic war mappings -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Bar -->
+                        <div class="config-action-bar">
+                            <button class="action-bar-btn primary" onclick="saveConfiguration()">
+                                <i class="bi bi-check-circle-fill"></i>
+                                <span>Save Changes</span>
+                            </button>
+                            <button class="action-bar-btn secondary" onclick="loadConfiguration()">
+                                <i class="bi bi-arrow-clockwise"></i>
+                                <span>Reload</span>
+                            </button>
+                            <button class="action-bar-btn danger" onclick="resetConfiguration()">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                <span>Reset All</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- RESIZE HANDLE -->
+        <div class="resize-handle" data-direction="left"></div>
+
+        <!-- CENTER COLUMN - Live Logs -->
+        <section class="column column-center" data-column="center">
+            <div class="column-header">
+                <i class="bi bi-terminal-fill"></i>
+                <span>Live Logs</span>
+                <button class="header-action-btn" onclick="clearLogs()">
+                    <i class="bi bi-trash3"></i> Clear
+                </button>
+            </div>
+            <div class="logs-wrapper">
+                <div id="logs-container" class="logs-container">
+                    <div class="log-entry log-info">
+                        <span class="log-time">System</span>
+                        <span class="log-message">Ready for deployment. Select WAR files and configure settings.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- RESIZE HANDLE -->
+        <div class="resize-handle" data-direction="right"></div>
+
+        <!-- RIGHT COLUMN - File Status -->
+        <aside class="column column-right" data-column="right">
+            <div class="column-header">
+                <i class="bi bi-speedometer2"></i>
+                <span>Progress & Status</span>
+            </div>
+
+            <!-- Progress Section -->
+            <div class="progress-section">
+                <div class="progress-header">
+                    <span class="progress-label">Deployment Progress</span>
+                    <span class="progress-value-display" id="progress-text">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="progress-info">
+                    <div class="progress-info-item">
+                        <span class="info-label">Current:</span>
+                        <span class="info-value" id="current-file">-</span>
+                    </div>
+                    <div class="progress-info-item">
+                        <span class="info-label">Files:</span>
+                        <span class="info-value"><span id="completed-count">0</span> / <span id="total-count">0</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Sizes Section -->
+            <div class="section-divider"></div>
+            <div class="files-section">
+                <div class="section-title">
+                    <i class="bi bi-hdd-fill"></i>
+                    <span>File Sizes</span>
+                </div>
+                <div class="files-list" id="file-sizes-container">
+                    <div class="files-cards-wrapper">
+                        <div id="file-sizes-body" class="files-cards-container">
+                            <div class="empty-state">
+                                <i class="bi bi-inbox"></i>
+                                <span>Run deployment to see file sizes</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Connection Status -->
+            <div class="section-divider"></div>
+            <div class="connection-section">
+                <div class="section-title">
+                    <i class="bi bi-diagram-3-fill"></i>
+                    <span>Connection Status</span>
+                </div>
+                <div class="connection-grid">
+                    <div class="connection-item" id="source-status">
+                        <div class="conn-icon">
+                            <i class="bi bi-hdd-network"></i>
+                        </div>
+                        <div class="conn-info">
+                            <span class="conn-label">Source</span>
+                            <span class="conn-status unknown">Not tested</span>
+                        </div>
+                    </div>
+                    <div class="connection-item" id="target-status">
+                        <div class="conn-icon">
+                            <i class="bi bi-cloud"></i>
+                        </div>
+                        <div class="conn-info">
+                            <span class="conn-label">Target</span>
+                            <span class="conn-status unknown">Not tested</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+        // Particle System
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2 + 0.5;
+                this.speedX = (Math.random() - 0.5) * 0.5;
+                this.speedY = (Math.random() - 0.5) * 0.5;
+                this.opacity = Math.random() * 0.5 + 0.2;
+                this.hue = Math.random() * 60 + 220; // Blue to purple range
+            }
+            
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                
+                if (this.x < 0 || this.x > canvas.width || 
+                    this.y < 0 || this.y > canvas.height) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${this.opacity})`;
+                ctx.fill();
+            }
+        }
+        
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < 80; i++) {
+                particles.push(new Particle());
+            }
+        }
+        
+        function connectParticles() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < 120) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(99, 102, 241, ${0.1 * (1 - distance / 120)})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+        
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            
+            connectParticles();
+            requestAnimationFrame(animateParticles);
+        }
+        
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+        });
+        
+        resizeCanvas();
+        initParticles();
+        animateParticles();
+        
+        // Version info button
+        document.getElementById('version-info-btn')?.addEventListener('click', function() {
+            const v = document.getElementById('version-input').value || 'Not set';
+            const t = document.getElementById('target-server').value || 'Not set';
+            const u = document.getElementById('target-username').value || 'Not set';
+            alert(`Configuration:\n\nVersion: ${v}\nTarget: ${t}\nUsername: ${u}\n\nPaths:\n• Source: /iflightneo/S3_BUILD/NonMS/KE/${v}/Wars\n• Target: /iflightneo/global/Utilities/${v}/Wars`);
+        });
+    </script>
+</body>
+</html>
