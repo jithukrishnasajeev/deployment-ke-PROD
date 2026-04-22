@@ -2074,6 +2074,56 @@ body {
     }
 }
 
+/* Vertical Height Optimizations for Small Laptops (768px height) */
+@media (max-height: 800px) {
+    :root {
+        --spacing-lg: 10px;
+        --spacing-xl: 16px;
+    }
+    
+    .top-header {
+        height: 46px;
+    }
+    
+    .main-container {
+        height: calc(100vh - 46px);
+    }
+    
+    .progress-section {
+        padding: 8px 12px;
+    }
+    
+    .progress-value-display {
+        font-size: 18px;
+    }
+    
+    .progress-label {
+        font-size: 10px;
+        margin-bottom: 4px;
+    }
+    
+    .file-card {
+        padding: 8px 10px;
+        margin-bottom: 6px;
+    }
+    
+    .file-card-name {
+        font-size: 11px;
+    }
+    
+    .files-cards-wrapper {
+        max-height: 45vh; /* Reduce from 55vh to ensure bottom visibility */
+    }
+    
+    .connection-item {
+        padding: 6px 10px;
+    }
+    
+    .section-divider {
+        margin: 8px 0;
+    }
+}
+
 /* Medium screens - Small Laptops (1366px) */
 @media (max-width: 1366px) {
     .main-container {
