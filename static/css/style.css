@@ -284,26 +284,55 @@ body {
     50% { opacity: 1; }
 }
 
-.header-right {
+.header-status {
     display: flex;
     align-items: center;
+    gap: 12px;
+}
+
+/* Version Badge with distinct accent */
+.version-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 20px;
+    color: var(--accent-orange);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+}
+
+.version-badge i {
+    font-size: 12px;
+}
+
+.version-badge:hover {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.2);
 }
 
 /* Status Indicator with Glow */
-.status-indicator {
+.status-badge {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    padding: 8px 16px;
+    padding: 6px 16px;
     background: var(--glass-bg);
     border-radius: 25px;
     border: 1px solid var(--glass-border);
-    backdrop-filter: blur(10px);
     transition: var(--transition-normal);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
     cursor: default;
 }
 
-.status-indicator:hover {
+.status-badge:hover {
     background: rgba(255, 255, 255, 0.06);
     border-color: var(--accent-green);
     box-shadow: 0 0 20px var(--glow-green);

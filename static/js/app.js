@@ -88,6 +88,12 @@ async function loadConfiguration() {
             versionInput.value = data.version;
         }
         
+        // Update header version badge
+        const headerVersion = document.getElementById('header-version-text');
+        if (headerVersion) {
+            headerVersion.textContent = data.version;
+        }
+        
         document.getElementById('source-server').value = data.source_server;
         
         // Handle target server - show primary route with indicator for multiple routes
@@ -110,6 +116,11 @@ async function loadConfiguration() {
         
         // Add version change listener to highlight when modified
         versionInput.addEventListener('input', function() {
+            // Sync with header badge
+            if (headerVersion) {
+                headerVersion.textContent = this.value || 'v?.?.?';
+            }
+            
             if (this.value !== data.version) {
                 this.style.borderColor = '#fbbf24';
                 this.style.boxShadow = '0 0 0 3px rgba(251, 191, 36, 0.2)';
