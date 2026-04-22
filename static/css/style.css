@@ -420,8 +420,8 @@ body {
     position: relative;
     z-index: 10;
     display: grid;
-    /* Use minmax for flexible but stable sidebars */
-    grid-template-columns: minmax(240px, var(--col-left-width, 18%)) 4px 1fr 4px minmax(260px, var(--col-right-width, 22%));
+    /* Prioritize the Right Column: Left is flexible, Middle takes remaining, Right is stable */
+    grid-template-columns: minmax(220px, 18%) 4px 1fr 4px minmax(320px, 22%);
     gap: 0;
     height: calc(100vh - 56px);
     background: linear-gradient(180deg, rgba(99, 102, 241, 0.1), transparent);
@@ -1306,7 +1306,8 @@ body {
    ================================================ */
 .column-right {
     overflow-y: auto;
-    padding: var(--spacing-lg);
+    overflow-x: hidden;
+    padding: 12px;
 }
 
 .column-right::-webkit-scrollbar {
@@ -1320,7 +1321,7 @@ body {
 
 /* Progress Section - Premium Card */
 .progress-section {
-    padding: var(--spacing-lg);
+    padding: 12px;
     background: linear-gradient(135deg, rgba(0, 0, 0, 0.3), rgba(99, 102, 241, 0.05));
     border-radius: 16px;
     border: 1px solid var(--border-color);
@@ -2074,9 +2075,10 @@ body {
 }
 
 /* Medium screens - Small Laptops (1366px) */
-@media (max-width: 1280px) {
+@media (max-width: 1366px) {
     .main-container {
-        grid-template-columns: 200px 1px 1fr 1px 230px;
+        /* Force Right Column visibility: Shrink Left and Middle to save Right */
+        grid-template-columns: 180px 1px 1fr 1px 300px;
     }
     
     .progress-section {
@@ -2084,17 +2086,15 @@ body {
     }
     
     .progress-value-display {
-        font-size: 22px;
+        font-size: 20px;
     }
     
-    .war-files-grid {
-        max-height: 120px;
+    .status-badge {
+        padding: 4px 10px;
     }
     
-    .action-btn {
-        padding: 8px 10px;
-        font-size: 11px;
-        gap: 6px;
+    .status-text {
+        font-size: 10px;
     }
 }
 
