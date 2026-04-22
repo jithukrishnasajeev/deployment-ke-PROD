@@ -483,11 +483,20 @@ def deploy_step2(config, selected_wars):
         for war_prefix in selected_wars:
             tar_file = f"{war_prefix}-{config.VERSION}.tar"
             local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
-            if not os.path.exists(local_tar):
+            war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
+            
+            if os.path.exists(local_tar):
+                # Update state with local size if not already set (helpful if Step 2 run separately)
+                local_size = os.path.getsize(local_tar)
+                if war_prefix not in deployment_state['file_sizes'] or deployment_state['file_sizes'][war_prefix].get('source_size', 0) == 0:
+                    update_file_size(war_prefix, war_name, source_size=local_size)
+            else:
                 missing_files.append(tar_file)
         
         if missing_files:
-            log_message(f"✗ Missing files for version {config.VERSION}!", 'error')
+            log_message(f"✗ Missing files in local path: {config.LOCAL_DOWNLOAD_PATH}", 'error')
+            for f in missing_files:
+                log_message(f"  • {f}", 'error')
             return False
             
         deployment_state['total_files'] = len(selected_wars)
@@ -717,7 +726,14 @@ def run_deployment(config, selected_wars, steps):
     deployment_state['cancelled'] = False
     deployment_state['logs'] = []
     deployment_state['progress'] = 0
-    deployment_state['file_sizes'] = {}
+    
+    # Only clear file sizes if we are starting a fresh download (Step 1)
+    # Otherwise, keep existing sizes so they show up when running Step 2 or 3 separately
+    if 1 in steps:
+        deployment_state['file_sizes'] = {}
+    elif not deployment_state.get('file_sizes'):
+        # If running Step 2/3 and state was lost (e.g. server restart), initialize empty
+        deployment_state['file_sizes'] = {}
     
     try:
         if 1 in steps:
