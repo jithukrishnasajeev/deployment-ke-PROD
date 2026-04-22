@@ -151,6 +151,11 @@ function loadWarFilesList(warFiles) {
     const container = document.getElementById('war-files-list');
     container.innerHTML = '';
     
+    if (!warFiles || warFiles.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding: 10px; font-size: 11px;">No files found</div>';
+        return;
+    }
+    
     warFiles.forEach((warFile, index) => {
         const warName = warFile.replace('iflight-', '').replace('-webapp', '').toUpperCase();
         const div = document.createElement('div');
@@ -161,6 +166,57 @@ function loadWarFilesList(warFiles) {
         `;
         container.appendChild(div);
     });
+}
+
+// Fetch WAR files dynamically from source server
+async function fetchWarsFromSource() {
+    const version = document.getElementById('version-input').value.trim();
+    if (!version) {
+        alert('Please enter a version number first.');
+        return;
+    }
+    
+    const fetchBtn = document.getElementById('fetch-wars-btn');
+    const fetchIcon = fetchBtn.querySelector('i');
+    
+    // UI Loading state
+    fetchBtn.disabled = true;
+    fetchIcon.classList.add('bi-spin'); // Custom class for rotation
+    addLog('info', `📡 Fetching available WAR files for version ${version}...`);
+    
+    try {
+        const response = await fetch('/api/fetch-wars', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version: version })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            addLog('error', '❌ Fetch failed: ' + data.error);
+            if (!data.files || data.files.length === 0) {
+                alert('No WAR files found for this version on the source server.');
+            }
+        } else {
+            addLog('success', `✅ Discovered ${data.war_files.length} WAR files on source server`);
+            loadWarFilesList(data.war_files);
+            
+            // Highlight the refresh button
+            fetchBtn.style.borderColor = 'var(--accent-green)';
+            fetchBtn.style.color = 'var(--accent-green)';
+            setTimeout(() => {
+                fetchBtn.style.borderColor = '';
+                fetchBtn.style.color = '';
+            }, 2000);
+        }
+    } catch (error) {
+        console.error('Error fetching WAR files:', error);
+        addLog('error', '❌ Network error during fetch: ' + error.message);
+    } finally {
+        fetchBtn.disabled = false;
+        fetchIcon.classList.remove('bi-spin');
+    }
 }
 
 // Select/Deselect all WAR files

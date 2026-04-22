@@ -373,6 +373,17 @@ body {
     letter-spacing: 1px;
 }
 
+/* Spin animation for icons */
+.bi-spin {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 /* ================================================
    MAIN 3-COLUMN LAYOUT (WITH RESIZE HANDLES)
    ================================================ */

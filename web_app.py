@@ -780,6 +780,67 @@ def events():
                    headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'})
 
 
+@app.route('/api/fetch-wars', methods=['POST'])
+def fetch_wars():
+    """Scan the source server for available WAR files for the given version"""
+    try:
+        data = request.json
+        version = data.get('version')
+        if not version:
+            return jsonify({'error': 'Version is required'}), 400
+            
+        config_path = os.path.join(os.path.dirname(__file__), 'deployment_config.json')
+        config = load_config_from_json(config_path)
+        
+        # Connect to source server
+        log_message(f"🔍 Scanning source server for version {version}...", 'info')
+        ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, config.SOURCE_PASSWORD, config.SOURCE_PORT)
+        ssh.client = ssh.connect().client
+        
+        # Command to list .war files
+        source_wars_dir = f"/iflightneo/S3_BUILD/NonMS/KE/{version}/Wars"
+        stdin, stdout, stderr = ssh.client.exec_command(f"ls -1 {source_wars_dir}/*.war")
+        
+        files = stdout.read().decode().splitlines()
+        exit_status = stdout.channel.recv_exit_status()
+        
+        ssh.close()
+        
+        if exit_status != 0:
+            return jsonify({'error': f"No WAR files found for version {version} or directory unreachable.", 'files': []})
+            
+        # Parse prefixes (e.g., iflight-crew-webapp-3.96.34.244.war -> iflight-crew-webapp)
+        # We look for files matching the pattern: prefix-version.war
+        available_wars = []
+        import re
+        
+        for file_path in files:
+            filename = os.path.basename(file_path)
+            # Remove .war extension
+            name_no_ext = filename.rsplit('.', 1)[0]
+            # Try to extract prefix by removing the version suffix
+            # Pattern: prefix-version (where version is likely 3.x.x.x)
+            prefix_match = re.search(r'^(.*?)-' + re.escape(version) + r'$', name_no_ext)
+            if prefix_match:
+                available_wars.append(prefix_match.group(1))
+            else:
+                # Fallback: if it doesn't match perfectly, just use the name before the last dash
+                if '-' in name_no_ext:
+                    prefix = name_no_ext.rsplit('-', 1)[0]
+                    available_wars.append(prefix)
+        
+        log_message(f"✓ Found {len(available_wars)} available WAR files for version {version}", 'success')
+        return jsonify({
+            'success': True,
+            'version': version,
+            'war_files': available_wars
+        })
+        
+    except Exception as e:
+        log_message(f"✗ Failed to fetch WAR files: {str(e)}", 'error')
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     """Get current configuration"""
