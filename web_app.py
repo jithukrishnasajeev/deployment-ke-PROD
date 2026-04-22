@@ -104,6 +104,36 @@ def create_transfer_callback(war_prefix, war_name, total_size, operation='upload
     return callback
 
 
+def fast_sftp_download(sftp, remote_path, local_path, war_prefix, war_name, callback=None):
+    """High-speed SFTP download using prefetch + streaming MD5 (single-pass).
+    
+    Returns the MD5 hex digest computed during download, eliminating the need
+    for a separate calculate_local_md5() call afterward.
+    """
+    import hashlib
+    file_size = sftp.stat(remote_path).st_size
+    md5_hash = hashlib.md5()
+    transferred = 0
+    
+    with sftp.open(remote_path, 'rb') as remote_file:
+        # Enable read-ahead prefetching — Paramiko will request chunks ahead of time
+        remote_file.prefetch(file_size)
+        remote_file.MAX_REQUEST_SIZE = 65536  # 64 KB per request (default 32 KB)
+        
+        with open(local_path, 'wb') as local_file:
+            while True:
+                data = remote_file.read(1048576)  # 1 MB read chunks
+                if not data:
+                    break
+                local_file.write(data)
+                md5_hash.update(data)
+                transferred += len(data)
+                if callback:
+                    callback(transferred, file_size)
+    
+    return md5_hash.hexdigest()
+
+
 def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, use_scp=False):
     """Optimized upload with SCP or SFTP based on config"""
     file_size = os.path.getsize(local_path)
@@ -166,7 +196,7 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
 
 
 def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, use_scp=False):
-    """Optimized download with SCP or SFTP based on config"""
+    """Optimized download using prefetch + streaming MD5 (SCP fallback available)"""
     
     # Get file size for progress tracking
     sftp = ssh.get_sftp()
@@ -208,7 +238,7 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
             elapsed = time.time() - start_time
             speed = file_size / elapsed / 1024 / 1024
             log_message(f"  ✓ SCP Download completed in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
-            return
+            return None  # No streaming MD5 with SCP, caller should compute separately
             
         except ImportError:
             log_message(f"  ⚠ SCP module not available, falling back to SFTP", 'warning')
@@ -217,16 +247,17 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
             log_message(f"  ⚠ SCP failed: {str(e)}, using SFTP", 'warning')
             sftp = ssh.get_sftp()  # Reopen SFTP
     
-    # Standard SFTP download (stable fallback)
-    log_message(f"  ⬇ Downloading {format_size(file_size)}...", 'info')
+    # Fast SFTP download with prefetch + streaming MD5
+    log_message(f"  ⬇ Downloading {format_size(file_size)} (prefetch + streaming MD5)...", 'info')
     callback = create_transfer_callback(war_prefix, war_name, file_size, 'downloading')
     
     start_time = time.time()
-    sftp.get(remote_path, local_path, callback=callback)
+    local_md5 = fast_sftp_download(sftp, remote_path, local_path, war_prefix, war_name, callback)
     elapsed = time.time() - start_time
     
     speed = file_size / elapsed / 1024 / 1024
     log_message(f"  ✓ Downloaded in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
+    return local_md5  # Return pre-computed MD5 to skip separate verification pass
 
 
 def broadcast_message(msg_type, data):
@@ -336,7 +367,7 @@ def deploy_step1(config, selected_wars):
             """Download single WAR file in thread"""
             try:
                 war_file = f"{war_prefix}-{config.VERSION}.war"
-                tar_file = f"{war_prefix}-{config.VERSION}.tar.gz"
+                tar_file = f"{war_prefix}-{config.VERSION}.tar"
                 war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
                 
                 # Each thread needs its own SSH connection
@@ -358,23 +389,25 @@ def deploy_step1(config, selected_wars):
                     update_file_size(war_prefix, war_name, source_size=source_war_size)
                     log_message(f"  📦 {war_name}: Source WAR {format_size(source_war_size)}", 'info')
                 
-                # Compress
+                # Package without gzip (WAR files are already ZIP-compressed)
                 with download_lock:
-                    log_message(f"  ⚙ {war_name}: Compressing...", 'info')
+                    log_message(f"  ⚙ {war_name}: Packaging (no gzip)...", 'info')
                 stdin, stdout, stderr = ssh.client.exec_command(
-                    f"cd {source_wars_dir} && tar -czf {remote_tar} {war_file}"
+                    f"cd {source_wars_dir} && tar -cf {remote_tar} {war_file}"
                 )
                 stdout.channel.recv_exit_status()
                 
-                # Download
+                # Download with prefetch + streaming MD5
                 use_scp = getattr(config, 'USE_SCP', False)
-                sftp_download_optimized(ssh, remote_tar, local_tar, war_prefix, war_name, use_scp)
+                local_md5 = sftp_download_optimized(ssh, remote_tar, local_tar, war_prefix, war_name, use_scp)
                 
-                # Verify
+                # Verify — use streaming MD5 if available, otherwise compute separately
                 with download_lock:
                     log_message(f"  🔐 {war_name}: Verifying MD5...", 'info')
                 remote_md5 = get_remote_md5(ssh, remote_tar)
-                local_md5 = calculate_local_md5(local_tar)
+                if local_md5 is None:
+                    # SCP path — need to compute MD5 separately
+                    local_md5 = calculate_local_md5(local_tar)
                 
                 if remote_md5 and local_md5 == remote_md5:
                     with download_lock:
@@ -448,7 +481,7 @@ def deploy_step2(config, selected_wars):
 
         missing_files = []
         for war_prefix in selected_wars:
-            tar_file = f"{war_prefix}-{config.VERSION}.tar.gz"
+            tar_file = f"{war_prefix}-{config.VERSION}.tar"
             local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
             if not os.path.exists(local_tar):
                 missing_files.append(tar_file)
@@ -482,7 +515,7 @@ def deploy_step2(config, selected_wars):
             idx, war_prefix = item
             try:
                 war_file = f"{war_prefix}-{config.VERSION}.war"
-                tar_file = f"{war_prefix}-{config.VERSION}.tar.gz"
+                tar_file = f"{war_prefix}-{config.VERSION}.tar"
                 war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
                 
                 # Round-robin assignment: Route 1, Route 2, Route 3, Route 1...
@@ -498,12 +531,8 @@ def deploy_step2(config, selected_wars):
                 ssh = SSHClient(assigned_route['host'], assigned_route['username'], config.TARGET_PASSWORD)
                 ssh.client = ssh.connect().client
                 
-                # Paramiko Speed Hacks
-                transport = ssh.client.get_transport()
-                transport.set_keepalive(15)
-                transport.default_window_size = 2147483647
-                transport.packetizer.REKEY_BYTES = pow(2, 40)
-                transport.packetizer.REKEY_PACKETS = pow(2, 40)
+                # Transport tuning is now handled by SSHClient.connect()
+                # No need for duplicate tuning here
                 
                 local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
                 target_tar_path = f"/tmp/{tar_file}_{threading.current_thread().ident}"
@@ -525,7 +554,7 @@ def deploy_step2(config, selected_wars):
                     update_file_size(war_prefix, war_name, status='extracting')
                 
                 stdin, stdout, stderr = ssh.client.exec_command(
-                    f"cd {config.TARGET_EXTRACT_PATH} && tar -xzf {target_tar_path}",
+                    f"cd {config.TARGET_EXTRACT_PATH} && tar -xf {target_tar_path}",
                     timeout=300
                 )
                 
@@ -1280,10 +1309,10 @@ def test_connection():
         
         log_message("📋 STEP 1 Commands (per WAR file):", 'info')
         sample_war = f"iflight-crew-cwp-webapp-{config.VERSION}.war"
-        sample_tar = f"iflight-crew-cwp-webapp-{config.VERSION}.tar.gz"
+        sample_tar = f"iflight-crew-cwp-webapp-{config.VERSION}.tar"
         
         log_message(f"1. cd {config.SOURCE_PATH}Wars", 'info')
-        log_message(f"2. tar -czf /tmp/{sample_tar} {sample_war}", 'info')
+        log_message(f"2. tar -cf /tmp/{sample_tar} {sample_war}", 'info')
         log_message(f"3. scp /tmp/{sample_tar} local:{config.LOCAL_DOWNLOAD_PATH}/", 'info')
         log_message(f"4. md5sum /tmp/{sample_tar}", 'info')
         log_message(f"5. rm -f /tmp/{sample_tar}", 'info')
@@ -1293,7 +1322,7 @@ def test_connection():
         
         log_message(f"1. scp {config.LOCAL_DOWNLOAD_PATH}/{sample_tar} target:/tmp/", 'info')
         log_message(f"2. md5sum /tmp/{sample_tar}", 'info')
-        log_message(f"3. cd {config.TARGET_EXTRACT_PATH} && tar -xzf /tmp/{sample_tar}", 'info')
+        log_message(f"3. cd {config.TARGET_EXTRACT_PATH} && tar -xf /tmp/{sample_tar}", 'info')
         log_message(f"4. mkdir -p {config.TARGET_DEPLOY_BASE}/CREW_CWP/{config.VERSION}/War", 'info')
         log_message(f"5. cp {config.TARGET_EXTRACT_PATH}/{sample_war} {config.TARGET_DEPLOY_BASE}/CREW_CWP/{config.VERSION}/War/", 'info')
         log_message(f"6. rm -f /tmp/{sample_tar}", 'info')

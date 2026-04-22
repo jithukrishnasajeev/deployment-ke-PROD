@@ -29,7 +29,7 @@ class DeploymentConfig:
     # Build path and version
     VERSION = "3.96.34.244"
     SOURCE_PATH = f"/iflightneo/S3_BUILD/NonMS/KE/{VERSION}/"
-    TAR_FILE = "Wars.tar.gz"
+    TAR_FILE = "Wars.tar"
     
     # SFTP Server
     SFTP_SERVER = "sftp.ibsplc.com"
@@ -71,7 +71,7 @@ class SSHClient:
         self.channel = None
     
     def connect(self):
-        """Establish SSH connection"""
+        """Establish SSH connection with transport speed tuning"""
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         print(f"[INFO] Connecting to {self.hostname}...")
@@ -82,7 +82,20 @@ class SSHClient:
             port=self.port,
             timeout=30
         )
-        print(f"[SUCCESS] Connected to {self.hostname}")
+        
+        # === SSH TRANSPORT SPEED TUNING ===
+        # These settings dramatically improve SFTP/SCP throughput by:
+        # 1. Maximizing the SSH window (allows burst transfers without waiting for ACKs)
+        # 2. Increasing max packet size (fewer packets = fewer round-trips)
+        # 3. Preventing mid-transfer rekeying (rekeying stalls the transfer for seconds)
+        transport = self.client.get_transport()
+        transport.set_keepalive(15)
+        transport.default_window_size = 2147483647          # 2 GB (default ~2 MB)
+        transport.default_max_packet_size = 32768            # 32 KB (default 16 KB)
+        transport.packetizer.REKEY_BYTES = pow(2, 40)        # ~1 TB before rekey
+        transport.packetizer.REKEY_PACKETS = pow(2, 40)      # ~1 trillion packets before rekey
+        
+        print(f"[SUCCESS] Connected to {self.hostname} (transport tuned)")
         return self
     
     def execute_command(self, command, sudo_password=None, timeout=300):
@@ -187,10 +200,10 @@ class SFTPClient:
 
 
 def calculate_local_md5(file_path):
-    """Calculate MD5 checksum of local file"""
+    """Calculate MD5 checksum of local file (optimized with 1 MB reads)"""
     md5_hash = hashlib.md5()
     with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
+        for chunk in iter(lambda: f.read(1048576), b""):  # 1 MB chunks (was 4 KB)
             md5_hash.update(chunk)
     return md5_hash.hexdigest()
 
@@ -238,16 +251,16 @@ def step1_package_and_upload(config, source_password, sftp_password):
         # Process each WAR file individually
         for idx, (war_prefix, deploy_folder) in enumerate(config.WAR_MAPPINGS, 1):
             war_file = f"{war_prefix}-{config.VERSION}.war"
-            tar_file = f"{war_prefix}-{config.VERSION}.tar.gz"
+            tar_file = f"{war_prefix}-{config.VERSION}.tar"
             remote_tar = f"/tmp/{tar_file}"
             local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
             
             print(f"[{idx}/{len(config.WAR_MAPPINGS)}] Processing {war_file}")
             
             # Compress individual WAR file
-            print(f"  [INFO] Compressing {war_file}...")
+            print(f"  [INFO] Packaging {war_file} (no gzip - WAR files are already compressed)...")
             output, error, exit_code = ssh.execute_command(
-                f"cd {source_wars_dir} && tar -czf {remote_tar} {war_file}"
+                f"cd {source_wars_dir} && tar -cf {remote_tar} {war_file}"
             )
             
             if exit_code != 0:
@@ -320,7 +333,7 @@ def step2_download_and_deploy(config, target_password, sftp_password):
         def process_war(item):
             idx, (war_prefix, deploy_folder) = item
             war_file = f"{war_prefix}-{config.VERSION}.war"
-            tar_file = f"{war_prefix}-{config.VERSION}.tar.gz"
+            tar_file = f"{war_prefix}-{config.VERSION}.tar"
             local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
             target_tar_path = f"/tmp/{tar_file}"
             
@@ -346,6 +359,15 @@ def step2_download_and_deploy(config, target_password, sftp_password):
                     compress=False,
                     ciphers=['aes128-ctr', 'chacha20-poly1305@openssh.com', 'aes128-cbc']
                 )
+                
+                # Apply same transport tuning as SSHClient.connect()
+                transport = thread_client.get_transport()
+                transport.set_keepalive(15)
+                transport.default_window_size = 2147483647
+                transport.default_max_packet_size = 32768
+                transport.packetizer.REKEY_BYTES = pow(2, 40)
+                transport.packetizer.REKEY_PACKETS = pow(2, 40)
+                
                 thread_sftp = thread_client.open_sftp()
                 
                 # The Speed Hack: confirm=False
@@ -361,7 +383,7 @@ def step2_download_and_deploy(config, target_password, sftp_password):
                     return f"  [{idx}] [WARNING] Checksum mismatch for {tar_file}!"
                 
                 # Extract and cleanup
-                thread_client.exec_command(f"cd {config.TARGET_EXTRACT_PATH} && tar -xzf {target_tar_path}")
+                thread_client.exec_command(f"cd {config.TARGET_EXTRACT_PATH} && tar -xf {target_tar_path}")
                 thread_client.exec_command(f"rm -f {target_tar_path}")
                 
                 return f"  [{idx}] [SUCCESS] Uploaded, verified, and extracted {tar_file} ✓"
@@ -412,7 +434,7 @@ def step2_download_and_deploy(config, target_password, sftp_password):
                 main_ssh.execute_command(cmd)
         
         # Cleanup any remaining compressed files on server
-        main_ssh.execute_command(f"rm -f /tmp/*.tar.gz /tmp/*.war")
+        main_ssh.execute_command(f"rm -f /tmp/*.tar /tmp/*.war")
         
     finally:
         main_ssh.close()
@@ -422,7 +444,7 @@ def step2_download_and_deploy(config, target_password, sftp_password):
     if cleanup == 'y':
         removed_count = 0
         for war_prefix, deploy_folder in config.WAR_MAPPINGS:
-            tar_file = f"{war_prefix}-{config.VERSION}.tar.gz"
+            tar_file = f"{war_prefix}-{config.VERSION}.tar"
             local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
             if os.path.exists(local_tar):
                 os.remove(local_tar)
