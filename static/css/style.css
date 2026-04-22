@@ -380,7 +380,8 @@ body {
     position: relative;
     z-index: 10;
     display: grid;
-    grid-template-columns: var(--col-left-width, 280px) 4px 1fr 4px var(--col-right-width, 320px);
+    /* Use minmax for flexible but stable sidebars */
+    grid-template-columns: minmax(240px, var(--col-left-width, 18%)) 4px 1fr 4px minmax(260px, var(--col-right-width, 22%));
     gap: 0;
     height: calc(100vh - 56px);
     background: linear-gradient(180deg, rgba(99, 102, 241, 0.1), transparent);
@@ -731,6 +732,12 @@ body {
     background: var(--accent-primary);
     border-radius: 50%;
     box-shadow: 0 0 10px var(--accent-primary);
+}
+
+@media (max-width: 1366px) {
+    .section-divider {
+        margin: 12px 0;
+    }
 }
 
 .section-header-with-actions {
@@ -1283,7 +1290,7 @@ body {
 }
 
 .progress-value-display {
-    font-size: 32px;
+    font-size: clamp(20px, 4vw, 32px); /* Responsive font size */
     font-weight: 800;
     font-family: 'JetBrains Mono', monospace;
     background: linear-gradient(135deg, var(--accent-primary), var(--accent-cyan), var(--accent-green));
@@ -1451,7 +1458,8 @@ body {
 
 /* Modern Card-Based File Display */
 .files-cards-wrapper {
-    max-height: 500px;
+    max-height: 40vh; /* Dynamic height based on viewport */
+    min-height: 120px;
     overflow-y: auto;
     overflow-x: hidden;
     border-radius: 12px;
@@ -1989,30 +1997,43 @@ body {
 /* Large screens - slightly reduce defaults */
 @media (max-width: 1600px) {
     .main-container {
-        grid-template-columns: var(--col-left-width, 260px) 4px 1fr 4px var(--col-right-width, 300px);
+        grid-template-columns: minmax(220px, 16%) 4px 1fr 4px minmax(250px, 20%);
     }
 }
 
 /* Medium-large screens */
 @media (max-width: 1400px) {
     .main-container {
-        grid-template-columns: var(--col-left-width, 240px) 4px 1fr 4px var(--col-right-width, 280px);
+        grid-template-columns: minmax(210px, 15%) 2px 1fr 2px minmax(240px, 18%);
+    }
+    :root {
+        --spacing-lg: 12px;
+        --spacing-xl: 18px;
     }
 }
 
-/* Medium screens */
-@media (max-width: 1200px) {
+/* Medium screens - Small Laptops (1366px) */
+@media (max-width: 1280px) {
     .main-container {
-        grid-template-columns: var(--col-left-width, 220px) 4px 1fr 4px var(--col-right-width, 260px);
+        grid-template-columns: 200px 1px 1fr 1px 230px;
+    }
+    
+    .progress-section {
+        padding: 10px;
+    }
+    
+    .progress-value-display {
+        font-size: 22px;
     }
     
     .war-files-grid {
-        max-height: 150px;
+        max-height: 120px;
     }
     
     .action-btn {
-        padding: 10px 12px;
-        font-size: 12px;
+        padding: 8px 10px;
+        font-size: 11px;
+        gap: 6px;
     }
 }
 
