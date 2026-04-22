@@ -100,6 +100,10 @@ def create_transfer_callback(war_prefix, war_name, total_size, operation='upload
             
             # Broadcast update (no logging to reduce overhead)
             broadcast_message('file_size', deployment_state['file_sizes'])
+
+            # CHECK FOR CANCELLATION
+            if deployment_state.get('cancelled'):
+                raise Exception("Cancellation requested by user")
     
     return callback
 
@@ -128,6 +132,10 @@ def fast_sftp_download(sftp, remote_path, local_path, war_prefix, war_name, call
                 local_file.write(data)
                 md5_hash.update(data)
                 transferred += len(data)
+                
+                # Check for cancellation
+                if deployment_state.get('cancelled'):
+                    raise Exception("Cancellation requested by user")
                 if callback:
                     callback(transferred, file_size)
     
@@ -163,6 +171,10 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
                         'status': 'uploading'
                     })
                     broadcast_message('file_size', deployment_state['file_sizes'])
+
+                    # CHECK FOR CANCELLATION
+                    if deployment_state.get('cancelled'):
+                        raise Exception("Cancellation requested by user")
             
             start_time = time.time()
             
