@@ -176,9 +176,9 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
             return
             
         except ImportError:
-            log_message(f"  ⚠ SCP module not available, falling back to SFTP", 'warning')
+            log_message(f"  ⚠ SCP module not available (pip install scp), falling back to SFTP", 'warning')
         except Exception as e:
-            log_message(f"  ⚠ SCP failed: {str(e)}, using SFTP", 'warning')
+            log_message(f"  ⚠ SCP failed: {str(e)}, falling back to SFTP (slower)", 'warning')
     
     # Standard SFTP upload (stable fallback)
     sftp = ssh.get_sftp()
@@ -501,9 +501,9 @@ def deploy_step2(config, selected_wars):
         setup_ssh.client.exec_command(f"mkdir -p {config.TARGET_EXTRACT_PATH}")
         setup_ssh.close()
 
-        # --- DISTRIBUTED MULTITHREADING ---
-        # 2 threads per route maximizes network saturation without locking the CPU
-        max_workers = len(target_routes) * 2 
+        # Increase parallel workers for faster uploads (max 10 concurrent)
+        # Using more threads for uploads since it's often the bottleneck
+        max_workers = min(10, len(selected_wars))
         log_message(f"🚀 Starting parallel upload with {max_workers} threads", 'info')
         
         upload_lock = threading.Lock()

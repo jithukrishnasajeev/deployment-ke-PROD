@@ -90,9 +90,9 @@ class SSHClient:
         # 3. Preventing mid-transfer rekeying (rekeying stalls the transfer for seconds)
         transport = self.client.get_transport()
         transport.set_keepalive(15)
-        # 64 MB window is a sweet spot for performance vs compatibility (was 2 GB)
+        # 64 MB window is a sweet spot for performance vs compatibility
         transport.default_window_size = 67108864            # 64 MB
-        transport.default_max_packet_size = 32768            # 32 KB
+        transport.default_max_packet_size = 65536            # 64 KB (was 32 KB)
         transport.packetizer.REKEY_BYTES = pow(2, 30)        # 1 GB before rekey
         transport.packetizer.REKEY_PACKETS = pow(2, 30)      # ~1 billion packets
         
@@ -365,7 +365,7 @@ def step2_download_and_deploy(config, target_password, sftp_password):
                 transport = thread_client.get_transport()
                 transport.set_keepalive(15)
                 transport.default_window_size = 67108864
-                transport.default_max_packet_size = 32768
+                transport.default_max_packet_size = 65536
                 transport.packetizer.REKEY_BYTES = pow(2, 30)
                 transport.packetizer.REKEY_PACKETS = pow(2, 30)
                 
@@ -409,8 +409,9 @@ def step2_download_and_deploy(config, target_password, sftp_password):
         # List extracted files
         main_ssh.execute_command(f"ls -la {config.TARGET_EXTRACT_PATH}/")
         
-        # Create all deployment directories first
-        print(f"\n[INFO] Creating deployment directories...")
+        # Increase parallel workers for faster uploads (max 8 concurrent)
+        max_workers = min(8, len(config.WAR_MAPPINGS))
+        print(f"[INFO] Starting parallel upload with {max_workers} threads...")
         main_ssh.execute_command(f"cd {config.TARGET_DEPLOY_BASE}")
         
         for war_prefix, deploy_folder in config.WAR_MAPPINGS:
