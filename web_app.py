@@ -794,7 +794,9 @@ def fetch_wars():
         
         # Connect to source server
         log_message(f"🔍 Scanning source server for version {version}...", 'info')
-        ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, config.SOURCE_PASSWORD, config.SOURCE_PORT)
+        # SOURCE_PORT might not be in config, default to 22
+        source_port = getattr(config, 'SOURCE_PORT', 22)
+        ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, config.SOURCE_PASSWORD, source_port)
         ssh.client = ssh.connect().client
         
         # Command to list .war files

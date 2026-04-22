@@ -459,8 +459,15 @@ def step2_download_and_deploy(config, target_password, sftp_password):
 
 def load_config_from_json(config_path):
     """Load configuration from JSON file"""
-    with open(config_path, 'r') as f:
-        json_config = json.load(f)
+    if not os.path.exists(config_path):
+        return DeploymentConfig()
+        
+    try:
+        with open(config_path, 'r') as f:
+            json_config = json.load(f)
+    except Exception as e:
+        print(f"[ERROR] Failed to parse config JSON: {e}")
+        return DeploymentConfig()
     
     config = DeploymentConfig()
     
