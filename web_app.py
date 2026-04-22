@@ -664,6 +664,27 @@ def deploy_step3(config, selected_wars):
         deployment_state['total_files'] = len(selected_wars)
         deployment_state['completed_files'] = 0
         
+        # --- RECOVER METADATA ---
+        # Recover source and target sizes if Step 3 is run independently
+        for war_prefix in selected_wars:
+            war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
+            war_file = f"{war_prefix}-{config.VERSION}.war"
+            tar_file = f"{war_prefix}-{config.VERSION}.tar"
+            
+            # 1. Recover Source Size from local downloads
+            local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
+            if os.path.exists(local_tar):
+                local_size = os.path.getsize(local_tar)
+                if war_prefix not in deployment_state['file_sizes'] or deployment_state['file_sizes'][war_prefix].get('source_size', 0) == 0:
+                    update_file_size(war_prefix, war_name, source_size=local_size)
+            
+            # 2. Recover Target Size from utilities folder
+            source_war_path = f"{config.TARGET_EXTRACT_PATH}/{war_file}"
+            if war_prefix not in deployment_state['file_sizes'] or deployment_state['file_sizes'][war_prefix].get('target_size', 0) == 0:
+                target_size = get_remote_file_size(ssh, source_war_path)
+                if target_size > 0:
+                    update_file_size(war_prefix, war_name, target_size=target_size, status='extracted')
+        
         war_map = dict(config.WAR_MAPPINGS)
         
         for idx, war_prefix in enumerate(selected_wars, 1):
