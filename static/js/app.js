@@ -166,6 +166,45 @@ function loadWarFilesList(warFiles) {
         `;
         container.appendChild(div);
     });
+    
+    // Reset filter to All when list is reloaded
+    filterWarList('all');
+}
+
+// Filter the WAR files list
+function filterWarList(category) {
+    const items = document.querySelectorAll('.war-item');
+    const pills = document.querySelectorAll('.filter-pill');
+    
+    // Update active pill
+    pills.forEach(pill => {
+        if (pill.getAttribute('data-filter') === category) {
+            pill.classList.add('active');
+        } else {
+            pill.classList.remove('active');
+        }
+    });
+    
+    // Filter items
+    items.forEach(item => {
+        const value = item.querySelector('input').value.toLowerCase();
+        
+        if (category === 'all') {
+            item.style.display = 'flex';
+        } else if (category === 'crew') {
+            if (value.includes('crew')) {
+                item.style.display = 'flex';
+            } else {
+                item.style.display = 'none';
+            }
+        } else if (category === 'ops') {
+            if (value.includes('ops') || value.includes('occ')) {
+                item.style.display = 'flex';
+            } else {
+                item.style.display = 'none';
+            }
+        }
+    });
 }
 
 // Fetch WAR files dynamically from source server

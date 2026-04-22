@@ -143,6 +143,11 @@
                         </button>
                     </div>
                 </div>
+                <div id="war-files-filter" class="filter-pills">
+                    <button class="filter-pill active" onclick="filterWarList('all')" data-filter="all">All</button>
+                    <button class="filter-pill" onclick="filterWarList('crew')" data-filter="crew">Crew</button>
+                    <button class="filter-pill" onclick="filterWarList('ops')" data-filter="ops">Ops</button>
+                </div>
                 <div id="war-files-list" class="war-files-grid">
                     <!-- WAR files loaded dynamically -->
                 </div>

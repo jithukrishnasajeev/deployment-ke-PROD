@@ -801,6 +801,42 @@ body {
     z-index: -1;
 }
 
+/* Module Filter Pills */
+.filter-pills {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 2px;
+}
+
+.filter-pill {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filter-pill:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-light);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+.filter-pill.active {
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 4px 15px var(--glow-primary);
+}
+
 /* WAR Files Grid - Glass Cards */
 .war-files-grid {
     display: flex;
