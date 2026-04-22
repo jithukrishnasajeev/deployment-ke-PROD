@@ -116,8 +116,8 @@ def fast_sftp_download(sftp, remote_path, local_path, war_prefix, war_name, call
     transferred = 0
     
     with sftp.open(remote_path, 'rb') as remote_file:
-        # Enable read-ahead prefetching — Paramiko will request chunks ahead of time
-        remote_file.prefetch(file_size)
+        # Enable read-ahead prefetching — use default buffer size for better stability
+        remote_file.prefetch()
         remote_file.MAX_REQUEST_SIZE = 65536  # 64 KB per request (default 32 KB)
         
         with open(local_path, 'wb') as local_file:

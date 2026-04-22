@@ -90,10 +90,11 @@ class SSHClient:
         # 3. Preventing mid-transfer rekeying (rekeying stalls the transfer for seconds)
         transport = self.client.get_transport()
         transport.set_keepalive(15)
-        transport.default_window_size = 2147483647          # 2 GB (default ~2 MB)
-        transport.default_max_packet_size = 32768            # 32 KB (default 16 KB)
-        transport.packetizer.REKEY_BYTES = pow(2, 40)        # ~1 TB before rekey
-        transport.packetizer.REKEY_PACKETS = pow(2, 40)      # ~1 trillion packets before rekey
+        # 64 MB window is a sweet spot for performance vs compatibility (was 2 GB)
+        transport.default_window_size = 67108864            # 64 MB
+        transport.default_max_packet_size = 32768            # 32 KB
+        transport.packetizer.REKEY_BYTES = pow(2, 30)        # 1 GB before rekey
+        transport.packetizer.REKEY_PACKETS = pow(2, 30)      # ~1 billion packets
         
         print(f"[SUCCESS] Connected to {self.hostname} (transport tuned)")
         return self
@@ -363,10 +364,10 @@ def step2_download_and_deploy(config, target_password, sftp_password):
                 # Apply same transport tuning as SSHClient.connect()
                 transport = thread_client.get_transport()
                 transport.set_keepalive(15)
-                transport.default_window_size = 2147483647
+                transport.default_window_size = 67108864
                 transport.default_max_packet_size = 32768
-                transport.packetizer.REKEY_BYTES = pow(2, 40)
-                transport.packetizer.REKEY_PACKETS = pow(2, 40)
+                transport.packetizer.REKEY_BYTES = pow(2, 30)
+                transport.packetizer.REKEY_PACKETS = pow(2, 30)
                 
                 thread_sftp = thread_client.open_sftp()
                 
