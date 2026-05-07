@@ -589,6 +589,60 @@ async function cancelDeployment() {
     }
 }
 
+async function retryFailed() {
+    if (isDeploying) {
+        alert('Deployment already in progress!');
+        return;
+    }
+
+    const version = document.getElementById('version-input').value.trim();
+    const targetServer = document.getElementById('target-server').value.trim();
+    const targetUsername = document.getElementById('target-username').value.trim();
+
+    if (!version) {
+        alert('Please enter a version number.');
+        return;
+    }
+
+    if (!confirm('Retry failed WAR uploads using alternate routes?')) {
+        return;
+    }
+
+    const retryBtn = document.getElementById('retry-btn');
+    if (retryBtn) retryBtn.style.display = 'none';
+
+    clearLogs();
+    addLog('info', '↻ Retrying failed uploads on alternate routes...');
+
+    isDeploying = true;
+    setButtonsDisabled(true);
+
+    try {
+        const response = await fetch('/api/retry-failed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version, target_server: targetServer, target_username: targetUsername })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            addLog('error', result.error || 'Retry failed to start');
+            isDeploying = false;
+            setButtonsDisabled(false);
+            return;
+        }
+
+        addLog('success', `Retrying: ${result.retrying.join(', ')}`);
+        // SSE stream already connected — completion will arrive via existing eventSource
+
+    } catch (error) {
+        addLog('error', 'Retry request failed: ' + error.message);
+        isDeploying = false;
+        setButtonsDisabled(false);
+    }
+}
+
 // Enable/disable all deployment buttons
 function setButtonsDisabled(disabled) {
     document.getElementById('deploy-btn').disabled = disabled;
@@ -603,22 +657,35 @@ function handleDeploymentComplete(data) {
     
     const progressSection = document.querySelector('.progress-section');
     const deployBtn = document.getElementById('deploy-btn');
+    const retryBtn = document.getElementById('retry-btn');
     
     deployBtn.classList.remove('deploying');
     
     if (data.cancelled) {
         updateStatus('Cancelled', 'bg-warning');
-        if (progressSection) {
-            progressSection.classList.remove('active');
-        }
+        if (progressSection) progressSection.classList.remove('active');
     } else {
-        updateStatus('Completed', 'bg-success');
+        // Check for failed wars and show retry button if any
+        const failedWars = data.failed_wars || [];
+        if (failedWars.length > 0 && retryBtn) {
+            retryBtn.style.display = 'flex';
+            const names = failedWars.map(w => w.replace('iflight-','').replace('-webapp','').toUpperCase()).join(', ');
+            retryBtn.querySelector('span').textContent = `Retry Failed (${failedWars.length})`;
+            retryBtn.title = `Retry on alternate route: ${names}`;
+        } else if (retryBtn) {
+            retryBtn.style.display = 'none';
+        }
+
+        if (failedWars.length > 0) {
+            updateStatus(`Done (${failedWars.length} failed)`, 'bg-warning');
+        } else {
+            updateStatus('Completed', 'bg-success');
+            createConfetti();
+        }
         if (progressSection) {
             progressSection.classList.remove('active');
-            progressSection.classList.add('progress-complete');
+            if (failedWars.length === 0) progressSection.classList.add('progress-complete');
         }
-        // Add celebration effect
-        createConfetti();
     }
 }
 

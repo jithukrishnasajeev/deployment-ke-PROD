@@ -47,7 +47,9 @@ deployment_state = {
     'current_file': None,
     'total_files': 0,
     'completed_files': 0,
-    'file_sizes': {}
+    'file_sizes': {},
+    'failed_wars': [],        # war prefixes that failed in last run
+    'failed_routes': {}       # war_prefix -> route index that was tried and failed
 }
 
 
@@ -179,7 +181,7 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
             start_time = time.time()
             
             # Use existing SSH transport for SCP
-            with SCPClient(ssh.client.get_transport(), progress=scp_progress, socket_timeout=60.0) as scp:
+            with SCPClient(ssh.get_transport(), progress=scp_progress, socket_timeout=60.0) as scp:
                 scp.put(local_path, remote_path)
             
             elapsed = time.time() - start_time
@@ -244,7 +246,7 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
             start_time = time.time()
             
             # Use existing SSH transport for SCP
-            with SCPClient(ssh.client.get_transport(), progress=scp_progress, socket_timeout=60.0) as scp:
+            with SCPClient(ssh.get_transport(), progress=scp_progress, socket_timeout=60.0) as scp:
                 scp.get(remote_path, local_path)
             
             elapsed = time.time() - start_time
@@ -334,7 +336,7 @@ def update_file_size(war_prefix, war_name, source_size=None, target_size=None, s
 
 def get_remote_file_size(ssh, file_path):
     """Get size of remote file in bytes"""
-    stdin, stdout, stderr = ssh.client.exec_command(f"stat -c%s {file_path} 2>/dev/null || echo 0")
+    stdin, stdout, stderr = ssh.exec_command(f"stat -c%s {file_path} 2>/dev/null || echo 0")
     try:
         return int(stdout.read().decode().strip())
     except:
@@ -384,7 +386,7 @@ def deploy_step1(config, selected_wars):
                 
                 # Each thread needs its own SSH connection
                 ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, config.SOURCE_PASSWORD)
-                ssh.client = ssh.connect().client
+                ssh.connect()
                 
                 with download_lock:
                     log_message(f"[{idx}/{len(selected_wars)}] {war_name}", 'info')
@@ -404,7 +406,7 @@ def deploy_step1(config, selected_wars):
                 # Package without gzip (WAR files are already ZIP-compressed)
                 with download_lock:
                     log_message(f"  ⚙ {war_name}: Packaging (no gzip)...", 'info')
-                stdin, stdout, stderr = ssh.client.exec_command(
+                stdin, stdout, stderr = ssh.exec_command(
                     f"cd {source_wars_dir} && tar -cf {remote_tar} {war_file}"
                 )
                 stdout.channel.recv_exit_status()
@@ -431,7 +433,7 @@ def deploy_step1(config, selected_wars):
                         update_file_size(war_prefix, war_name, status='warning')
                 
                 # Cleanup
-                ssh.client.exec_command(f"rm -f {remote_tar}")
+                ssh.exec_command(f"rm -f {remote_tar}")
                 ssh.close()
                 
                 with download_lock:
@@ -513,44 +515,117 @@ def deploy_step2(config, selected_wars):
             
         deployment_state['total_files'] = len(selected_wars)
         deployment_state['completed_files'] = 0
-        
-        # --- PRE-CHECK ---
-        log_message(f"  🔗 Connecting to primary node for initial directory setup...", 'info')
-        primary_route = target_routes[0]
-        setup_ssh = SSHClient(primary_route['host'], primary_route['username'], config.TARGET_PASSWORD)
-        setup_ssh.client = setup_ssh.connect().client
-        setup_ssh.client.exec_command(f"mkdir -p {config.TARGET_EXTRACT_PATH}")
-        setup_ssh.close()
+        deployment_state['failed_wars'] = []
+        deployment_state['failed_routes'] = {}
 
-        # Increase parallel workers for faster uploads (max 10 concurrent)
-        # Using more threads for uploads since it's often the bottleneck
-        max_workers = min(10, len(selected_wars))
+        # ── Pre-flight: test every route before starting uploads ─────────────
+        log_message(f"🔍 Pre-flight: testing {len(target_routes)} route(s)...", 'info')
+        dead_routes = set()
+
+        for r_idx, route in enumerate(target_routes):
+            pam_host = route['host'].split('.')[0]
+            target_ip = route['username'].split('%')[-1]
+            test_ssh = None
+            try:
+                test_ssh = SSHClient(route['host'], route['username'], config.TARGET_PASSWORD)
+                test_ssh.connect(max_retries=1)
+                test_ssh.close()
+                log_message(f"  ✓ Route {r_idx}: {pam_host} -> {target_ip} — OK", 'success')
+            except Exception as e:
+                dead_routes.add(r_idx)
+                log_message(f"  ✗ Route {r_idx}: {pam_host} -> {target_ip} — FAILED ({str(e)[:60]})", 'error')
+                try:
+                    if test_ssh:
+                        test_ssh.close()
+                except Exception:
+                    pass
+
+        live_routes = [i for i in range(len(target_routes)) if i not in dead_routes]
+        if not live_routes:
+            log_message("✗ All routes failed pre-flight check — aborting upload.", 'error')
+            return False
+
+        log_message(f"  → {len(live_routes)}/{len(target_routes)} route(s) alive: {[target_routes[i]['host'].split('.')[0] for i in live_routes]}", 'info')
+        # Rebuild target_routes to only include live ones for this run
+        target_routes = [target_routes[i] for i in live_routes]
+        dead_routes = set()   # reset — new indices apply to trimmed list
+        dead_route_lock = threading.Lock()
+        # ─────────────────────────────────────────────────────────────────────
+
+        # Each thread creates the extract dir itself — no fragile pre-connection needed
+        log_message(f"  🔗 Connecting to primary node for initial directory setup...", 'info')
+
+        # Throttle parallel workers based on available routes.
+        # Single route = all traffic hits one PAM host — cap at 3 with stagger to
+        # avoid MaxStartups drops. Multiple routes = spread load, allow up to 10.
+        single_route_mode = len(target_routes) == 1
+        max_workers = min(3, len(selected_wars)) if single_route_mode else min(10, len(selected_wars))
+        stagger_delay = 2.0 if single_route_mode else 0  # seconds between job submissions
+        if single_route_mode:
+            log_message(f"⚠ Single route only — using {max_workers} workers with {stagger_delay}s stagger", 'warning')
         log_message(f"🚀 Starting parallel upload with {max_workers} threads", 'info')
         
         upload_lock = threading.Lock()
         completed_count = [0]
         errors = []
+        
+        # Per-host semaphores: strictly serialize SSH handshakes per PAM server.
+        # PAM_NV appears to enforce MaxStartups=1 for new connections, dropping
+        # concurrent handshakes. Semaphore(1) queues threads instead of dropping them.
+        pam_semaphores = {}
+        semaphore_lock = threading.Lock()
+        # dead_routes and dead_route_lock already initialised by pre-flight block above
+
+        def get_host_semaphore(host):
+            with semaphore_lock:
+                if host not in pam_semaphores:
+                    pam_semaphores[host] = threading.Semaphore(1)
+                return pam_semaphores[host]
+
+        def pick_route(idx):
+            """Round-robin, skipping routes that already failed to connect."""
+            n = len(target_routes)
+            with dead_route_lock:
+                dead = set(dead_routes)
+            for offset in range(n):
+                candidate = (idx + offset) % n
+                if candidate not in dead:
+                    return candidate, target_routes[candidate]
+            # All routes dead — fall back to original assignment
+            return idx % n, target_routes[idx % n]
 
         def upload_single_war(item):
             """Upload and extract single WAR file using a specifically assigned route"""
             idx, war_prefix = item
+            route_idx = idx % len(target_routes)  # updated by pick_route
             try:
                 war_file = f"{war_prefix}-{config.VERSION}.war"
                 tar_file = f"{war_prefix}-{config.VERSION}.tar"
                 war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
-                
-                # Round-robin assignment: Route 1, Route 2, Route 3, Route 1...
-                assigned_route = target_routes[idx % len(target_routes)]
-                pam_host = assigned_route['host'].split('.')[0] # e.g., PAM_NV or PAM_TYO
+
+                # Pick a live route (skips routes that already failed to connect)
+                route_idx, assigned_route = pick_route(idx)
+                pam_host = assigned_route['host'].split('.')[0]
                 target_ip = assigned_route['username'].split('%')[-1]
-                
+
                 with upload_lock:
                     log_message(f"[{idx+1}/{len(selected_wars)}] {war_name} -> {pam_host} -> {target_ip}", 'info')
                     update_file_size(war_prefix, war_name, status='uploading')
-                
-                # Connect using the unique route for this specific file
-                ssh = SSHClient(assigned_route['host'], assigned_route['username'], config.TARGET_PASSWORD)
-                ssh.client = ssh.connect().client
+
+                # Throttle concurrent auth to same PAM host to avoid MaxStartups rejection
+                host_sem = get_host_semaphore(assigned_route['host'])
+                try:
+                    with host_sem:
+                        ssh = SSHClient(assigned_route['host'], assigned_route['username'], config.TARGET_PASSWORD)
+                        ssh.connect()
+                except Exception:
+                    # Mark this route dead so subsequent WARs skip it
+                    with dead_route_lock:
+                        dead_routes.add(route_idx)
+                    with upload_lock:
+                        log_message(f"  ✗ Route {route_idx} ({pam_host}) unreachable — blacklisted for this run", 'warning')
+                    raise
+                # SSH authenticated — semaphore released when 'with host_sem' exits above
                 
                 # Transport tuning is now handled by SSHClient.connect()
                 # No need for duplicate tuning here
@@ -569,12 +644,13 @@ def deploy_step2(config, selected_wars):
                     with upload_lock:
                         log_message(f"  ⚠ {war_name} ({pam_host}): MD5 mismatch!", 'warning')
                 
-                # Extract
+                # Extract (mkdir -p ensures dir exists regardless of pre-check)
                 with upload_lock:
                     log_message(f"  📂 {war_name}: Extracting via {target_ip}...", 'info')
                     update_file_size(war_prefix, war_name, status='extracting')
                 
-                stdin, stdout, stderr = ssh.client.exec_command(
+                ssh.exec_command(f"mkdir -p {config.TARGET_EXTRACT_PATH}")
+                stdin, stdout, stderr = ssh.exec_command(
                     f"cd {config.TARGET_EXTRACT_PATH} && tar -xf {target_tar_path}",
                     timeout=300
                 )
@@ -583,7 +659,7 @@ def deploy_step2(config, selected_wars):
                     raise Exception(f"Extraction failed: {stderr.read().decode().strip()}")
                 
                 # Cleanup
-                ssh.client.exec_command(f"rm -f {target_tar_path}")
+                ssh.exec_command(f"rm -f {target_tar_path}")
                 
                 # Get final size
                 deployed_war = f"{config.TARGET_EXTRACT_PATH}/{war_file}"
@@ -604,6 +680,9 @@ def deploy_step2(config, selected_wars):
                     errors.append(f"{war_prefix}: {str(e)}")
                     log_message(f"  ✗ {war_prefix} failed on {pam_host} -> {target_ip}: {str(e)}", 'error')
                     update_file_size(war_prefix, war_name, status='error')
+                    # Track failure so retry can use a different route
+                    deployment_state['failed_wars'].append(war_prefix)
+                    deployment_state['failed_routes'][war_prefix] = route_idx
                 try:
                     ssh.close()
                 except:
@@ -611,15 +690,18 @@ def deploy_step2(config, selected_wars):
                 return False
 
         # Execute distributed uploads
+        import time as _time
         from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             items = list(enumerate(selected_wars))
-            futures = {
-                executor.submit(upload_single_war, item): item[1] 
-                for item in items
-                if not deployment_state.get('cancelled')
-            }
-            
+            futures = {}
+            for item in items:
+                if deployment_state.get('cancelled'):
+                    break
+                futures[executor.submit(upload_single_war, item)] = item[1]
+                if stagger_delay and len(futures) < len(items):
+                    _time.sleep(stagger_delay)
+
             for future in as_completed(futures):
                 if deployment_state.get('cancelled'):
                     log_message("⚠ Deployment cancelled", 'warning')
@@ -648,7 +730,7 @@ def deploy_step3(config, selected_wars):
         # Connect to target server
         log_message(f"Connecting to {config.TARGET_SERVER}...", 'info')
         ssh = SSHClient(config.TARGET_SERVER, config.TARGET_USER, config.TARGET_PASSWORD)
-        ssh.client = ssh.connect().client
+        ssh.connect()
         log_message(f"✓ Connected to target server", 'success')
         
         # Validate remote files exist in utilities folder and match the version
@@ -657,7 +739,7 @@ def deploy_step3(config, selected_wars):
         for war_prefix in selected_wars:
             war_file = f"{war_prefix}-{config.VERSION}.war"
             source_war = f"{config.TARGET_EXTRACT_PATH}/{war_file}"
-            stdin, stdout, stderr = ssh.client.exec_command(f"test -f {source_war} && echo 'exists'")
+            stdin, stdout, stderr = ssh.exec_command(f"test -f {source_war} && echo 'exists'")
             exists = stdout.read().decode().strip()
             if not exists:
                 missing_files.append(war_file)
@@ -723,10 +805,10 @@ def deploy_step3(config, selected_wars):
             if deploy_folder:
                 target_dir = f"{config.TARGET_DEPLOY_BASE}/{deploy_folder}/{config.VERSION}/War"
                 log_message(f"  📁 Creating {deploy_folder}...", 'info')
-                ssh.client.exec_command(f"mkdir -p {target_dir}")
+                ssh.exec_command(f"mkdir -p {target_dir}")
                 
                 log_message(f"  📋 Copying to deployment folder...", 'info')
-                ssh.client.exec_command(f"cp {source_war} {target_dir}/")
+                ssh.exec_command(f"cp {source_war} {target_dir}/")
                 
                 # Verify final deployed size
                 final_war = f"{target_dir}/{war_file}"
@@ -795,7 +877,10 @@ def run_deployment(config, selected_wars, steps):
     finally:
         deployment_state['running'] = False
         deployment_state['step'] = None
-        broadcast_message('complete', {'cancelled': deployment_state.get('cancelled', False)})
+        broadcast_message('complete', {
+            'cancelled': deployment_state.get('cancelled', False),
+            'failed_wars': deployment_state.get('failed_wars', [])
+        })
 
 
 @app.route('/')
@@ -846,11 +931,11 @@ def fetch_wars():
         # SOURCE_PORT might not be in config, default to 22
         source_port = getattr(config, 'SOURCE_PORT', 22)
         ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, config.SOURCE_PASSWORD, source_port)
-        ssh.client = ssh.connect().client
+        ssh.connect()
         
         # Command to list .war files
         source_wars_dir = f"/iflightneo/S3_BUILD/NonMS/KE/{version}/Wars"
-        stdin, stdout, stderr = ssh.client.exec_command(f"ls -1 {source_wars_dir}/*.war")
+        stdin, stdout, stderr = ssh.exec_command(f"ls -1 {source_wars_dir}/*.war")
         
         files = stdout.read().decode().splitlines()
         exit_status = stdout.channel.recv_exit_status()
@@ -903,7 +988,7 @@ def get_config():
         target_routes = getattr(config, 'TARGET_ROUTES', [])
         primary_route = target_routes[0] if target_routes else {'host': config.TARGET_SERVER, 'username': config.TARGET_USER}
         
-        return jsonify({
+        response = jsonify({
             'version': config.VERSION,
             'source_server': config.SOURCE_SERVER,
             'target_server': primary_route.get('host', config.TARGET_SERVER),
@@ -912,6 +997,8 @@ def get_config():
             'war_files': [prefix for prefix, _ in config.WAR_MAPPINGS],
             'total_routes': len(target_routes)
         })
+        response.headers['Cache-Control'] = 'no-store'
+        return response
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1178,8 +1265,80 @@ def get_status():
         'current_file': deployment_state['current_file'],
         'completed': deployment_state['completed_files'],
         'total': deployment_state['total_files'],
-        'file_sizes': deployment_state['file_sizes']
+        'file_sizes': deployment_state['file_sizes'],
+        'failed_wars': deployment_state.get('failed_wars', [])
     })
+
+
+@app.route('/api/retry-failed', methods=['POST'])
+def retry_failed():
+    """Retry only the failed WAR uploads, using alternate routes"""
+    if deployment_state['running']:
+        return jsonify({'error': 'Deployment already running'}), 400
+
+    failed_wars = deployment_state.get('failed_wars', [])
+    if not failed_wars:
+        return jsonify({'error': 'No failed uploads to retry'}), 400
+
+    try:
+        data = request.json or {}
+        version = data.get('version')
+        target_server = data.get('target_server')
+        target_username = data.get('target_username')
+
+        config_path = os.path.join(os.path.dirname(__file__), 'deployment_config.json')
+        config = load_config_from_json(config_path)
+
+        if version:
+            config.VERSION = version
+            config.SOURCE_PATH = f"/iflightneo/S3_BUILD/NonMS/KE/{version}/"
+            config.TARGET_EXTRACT_PATH = f"/iflightneo/global/Utilities/{version}/Wars"
+        if target_server:
+            config.TARGET_SERVER = target_server
+        if target_username:
+            config.TARGET_USER = target_username
+
+        # Rotate the route list so failed routes are deprioritized:
+        # Each failed war tried route index N → start rotation from N+1
+        failed_routes = deployment_state.get('failed_routes', {})
+        target_routes = getattr(config, 'TARGET_ROUTES', [])
+        if not target_routes:
+            target_routes = [{'host': config.TARGET_SERVER, 'username': config.TARGET_USER}]
+
+        # Build a rotated route list for the retry:
+        # Find the most common failed route index and rotate past it
+        if failed_routes and len(target_routes) > 1:
+            from collections import Counter
+            most_failed_idx = Counter(failed_routes.values()).most_common(1)[0][0]
+            rotate_by = (most_failed_idx + 1) % len(target_routes)
+            config.TARGET_ROUTES = target_routes[rotate_by:] + target_routes[:rotate_by]
+            log_message(f"↻ Retry: rotating routes to avoid route {most_failed_idx} ({target_routes[most_failed_idx]['host'].split('.')[0]})", 'info')
+
+        wars_to_retry = list(failed_wars)
+        log_message(f"↻ Retrying {len(wars_to_retry)} failed upload(s): {', '.join(w.replace('iflight-','').replace('-webapp','').upper() for w in wars_to_retry)}", 'info')
+
+        def run_retry():
+            deployment_state['running'] = True
+            deployment_state['cancelled'] = False
+            try:
+                deploy_step2(config, wars_to_retry)
+            except Exception as e:
+                log_message(f"Retry failed: {str(e)}", 'error')
+            finally:
+                deployment_state['running'] = False
+                broadcast_message('complete', {
+                    'cancelled': deployment_state.get('cancelled', False),
+                    'failed_wars': deployment_state.get('failed_wars', [])
+                })
+
+        thread = threading.Thread(target=run_retry)
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({'success': True, 'retrying': wars_to_retry})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/test-connection', methods=['POST'])

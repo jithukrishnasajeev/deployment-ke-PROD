@@ -60,14 +60,3 @@ downloads/*
 
 # Node
 node_modules/
-
-# Sensitive config files
-deployment_config.json
-
-# Sensitive config files
-deployment_config.json
-
-# Sensitive config files
-deployment_config.json
-# Sensitive config
-deployment_config.json

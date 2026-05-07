@@ -1124,6 +1124,19 @@ body {
     transform: translateY(-2px);
 }
 
+.action-btn.warning {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.15));
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.action-btn.warning:hover {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.35), rgba(245, 158, 11, 0.25));
+    border-color: #fbbf24;
+    box-shadow: 0 0 25px rgba(251, 191, 36, 0.3);
+    transform: translateY(-2px);
+}
+
 .bypass-checkbox {
     display: flex;
     align-items: center;

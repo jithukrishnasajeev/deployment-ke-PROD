@@ -70,47 +70,125 @@ class SSHClient:
         self.client = None
         self.channel = None
     
-    def connect(self):
-        """Establish SSH connection with transport speed tuning"""
-        self.client = paramiko.SSHClient()
-        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    def connect(self, max_retries=3):
+        """Establish SSH connection with keyboard-interactive primary, password fallback.
+        
+        Retries up to max_retries times for transient failures (e.g. server-side
+        MaxStartups throttling). Auth failures (wrong password) are never retried.
+        """
+        import socket as _socket
+        import time as _time
+
         print(f"[INFO] Connecting to {self.hostname}...")
-        self.client.connect(
-            hostname=self.hostname,
-            username=self.username,
-            password=self.password,
-            port=self.port,
-            timeout=30
-        )
-        
-        # === SSH TRANSPORT SPEED TUNING ===
-        # These settings dramatically improve SFTP/SCP throughput by:
-        # 1. Maximizing the SSH window (allows burst transfers without waiting for ACKs)
-        # 2. Increasing max packet size (fewer packets = fewer round-trips)
-        # 3. Preventing mid-transfer rekeying (rekeying stalls the transfer for seconds)
-        transport = self.client.get_transport()
-        transport.set_keepalive(15)
-        # 64 MB window is a sweet spot for performance vs compatibility
-        transport.default_window_size = 67108864            # 64 MB
-        transport.default_max_packet_size = 65536            # 64 KB (was 32 KB)
-        transport.packetizer.REKEY_BYTES = pow(2, 30)        # 1 GB before rekey
-        transport.packetizer.REKEY_PACKETS = pow(2, 30)      # ~1 billion packets
-        
-        print(f"[SUCCESS] Connected to {self.hostname} (transport tuned)")
-        return self
+
+        last_error = None
+        for attempt in range(max_retries):
+            if attempt > 0:
+                wait = 3 * attempt
+                print(f"[INFO] Retrying {self.hostname} (attempt {attempt+1}/{max_retries}) after {wait}s...")
+                _time.sleep(wait)
+
+            sock = None
+            transport = None
+            try:
+                sock = _socket.create_connection((self.hostname, self.port), timeout=30)
+                transport = paramiko.Transport(sock)
+                transport.banner_timeout = 30
+                transport.auth_timeout = 60
+                transport.start_client(timeout=30)
+
+                def ki_handler(title, instructions, prompt_list):
+                    return [self.password] * len(prompt_list)
+
+                try:
+                    transport.auth_interactive(self.username, ki_handler)
+                except paramiko.ssh_exception.BadAuthenticationType:
+                    # Server explicitly doesn't support ki — try plain password instead
+                    transport.auth_password(self.username, self.password)
+                # Any other AuthenticationException (wrong password) propagates immediately
+
+                if not transport.is_authenticated():
+                    raise paramiko.ssh_exception.AuthenticationException(
+                        f"Authentication failed for {self.username}@{self.hostname}"
+                    )
+
+                # Success — wire up the SSHClient wrapper
+                self.client = paramiko.SSHClient()
+                self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                self.client._transport = transport
+                self._transport = transport
+                self._sock = sock
+
+                # === SSH TRANSPORT SPEED TUNING ===
+                self._transport.set_keepalive(15)
+                self._transport.default_window_size = 67108864        # 64 MB
+                self._transport.default_max_packet_size = 65536       # 64 KB
+                self._transport.packetizer.REKEY_BYTES = pow(2, 30)   # 1 GB before rekey
+                self._transport.packetizer.REKEY_PACKETS = pow(2, 30) # ~1 billion packets
+
+                print(f"[SUCCESS] Connected to {self.hostname} (transport tuned)")
+                return self
+
+            except paramiko.ssh_exception.AuthenticationException:
+                # Wrong password or auth protocol error — retrying won't help
+                if transport:
+                    transport.close()
+                if sock:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+                raise
+
+            except Exception as e:
+                # Transport/network error — worth retrying
+                last_error = e
+                if transport:
+                    try:
+                        transport.close()
+                    except Exception:
+                        pass
+                if sock:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+
+        raise last_error
     
     def execute_command(self, command, sudo_password=None, timeout=300):
-        """Execute a command on remote server"""
+        """Execute a command on remote server using transport session"""
         print(f"[CMD] {command}")
-        stdin, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+        
+        # Open channel directly on transport
+        channel = self._transport.open_session()
+        channel.settimeout(timeout)
+        channel.exec_command(command)
         
         if sudo_password and 'sudo' in command:
-            stdin.write(sudo_password + '\n')
-            stdin.flush()
+            channel.send(sudo_password + '\n')
         
-        output = stdout.read().decode('utf-8')
-        error = stderr.read().decode('utf-8')
-        exit_code = stdout.channel.recv_exit_status()
+        # Read output
+        stdout_data = b''
+        stderr_data = b''
+        
+        while True:
+            if channel.recv_ready():
+                stdout_data += channel.recv(65536)
+            if channel.recv_stderr_ready():
+                stderr_data += channel.recv_stderr(65536)
+            if channel.exit_status_ready():
+                # Drain remaining data
+                while channel.recv_ready():
+                    stdout_data += channel.recv(65536)
+                while channel.recv_stderr_ready():
+                    stderr_data += channel.recv_stderr(65536)
+                break
+        
+        output = stdout_data.decode('utf-8')
+        error = stderr_data.decode('utf-8')
+        exit_code = channel.recv_exit_status()
+        channel.close()
         
         if output:
             print(f"[OUTPUT] {output}")
@@ -119,20 +197,45 @@ class SSHClient:
         
         return output, error, exit_code
     
+    def exec_command(self, command, timeout=300):
+        """Execute command and return (stdin, stdout, stderr) channel files for compatibility.
+        
+        This mimics paramiko.SSHClient.exec_command() interface for web_app.py compatibility.
+        """
+        channel = self._transport.open_session()
+        channel.settimeout(timeout)
+        channel.exec_command(command)
+        
+        # Return channel file objects like paramiko.SSHClient.exec_command
+        stdin = channel.makefile_stdin('wb')
+        stdout = channel.makefile('rb')
+        stderr = channel.makefile_stderr('rb')
+        
+        return stdin, stdout, stderr
+    
     def execute_as_user(self, command, switch_user, password):
         """Execute command as different user using sudo su"""
         full_command = f"echo '{password}' | sudo -S su - {switch_user} -c '{command}'"
         return self.execute_command(full_command)
     
     def get_sftp(self):
-        """Get SFTP client"""
-        return self.client.open_sftp()
+        """Get SFTP client from transport"""
+        return paramiko.SFTPClient.from_transport(self._transport)
+    
+    def get_transport(self):
+        """Get the underlying transport for SCP operations"""
+        return self._transport
     
     def close(self):
         """Close SSH connection"""
-        if self.client:
-            self.client.close()
-            print(f"[INFO] Disconnected from {self.hostname}")
+        if hasattr(self, '_transport') and self._transport:
+            self._transport.close()
+        if hasattr(self, '_sock') and self._sock:
+            try:
+                self._sock.close()
+            except:
+                pass
+        print(f"[INFO] Disconnected from {self.hostname}")
 
 
 class SFTPClient:
@@ -543,6 +646,10 @@ def interactive_mode(config_path=None):
     # Get version (allow override)
     version_input = input(f"\nEnter version [{config.VERSION}]: ").strip()
     if version_input:
+        import re
+        if not re.fullmatch(r'[\d.]+', version_input):
+            print("[ERROR] Invalid version format. Use digits and dots only (e.g. 3.96.34.244).")
+            return
         config.VERSION = version_input
         # Update dependent paths
         config.SOURCE_PATH = f"/iflightneo/S3_BUILD/NonMS/KE/{config.VERSION}/"

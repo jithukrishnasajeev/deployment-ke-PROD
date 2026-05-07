@@ -1,0 +1,50 @@
+{
+    "version": "3.96.34.246",
+    "source_server": {
+        "host": "10.246.26.148",
+        "username": "a-10266",
+        "port": 22,
+        "switch_user": "iflight_user"
+    },
+    "local": {
+        "download_path": "D:\\RMT_TOOLS\\Deployment_KE\\downloads2"
+    },
+    "target_server": {
+        "routes": [
+            {
+                "host": "PAM_NV.ibsplc.aero",
+                "username": "a-10266@ibsplc.com%iflightkeprod%10.175.1.247"
+            },
+            {
+                "host": "PAM_TYO.ibsplc.aero",
+                "username": "a-10266@ibsplc.com%iflightkeprod%10.175.1.140"
+            }
+        ],
+        "port": 22
+    },
+    "paths": {
+        "source_base": "/iflightneo/S3_BUILD/NonMS/KE",
+        "target_utilities": "/iflightneo/global/Utilities",
+        "target_deploy_base": "/iflightneo/global/PROD/ifl_prod_KE_crew/NonMS/Deployments"
+    },
+    "transfer_optimization": {
+        "enabled": false,
+        "protocol": "SFTP",
+        "compression": false,
+        "parallel_downloads": true,
+        "max_threads": 3,
+        "comments": "Network speed is the bottleneck (~0.2 MB/s). Parallel downloads with 3 threads for faster Step 1. SCP not supported by server."
+    },
+    "war_mappings": {
+        "iflight-crew-cwp-webapp": "CREW_CWP",
+        "iflight-crew-dsm-webapp": "CREW_DSM",
+        "iflight-crew-integration-webapp": "CREW_INTEGRATION",
+        "iflight-crew-messaging-webapp": "CREW_MSG",
+        "iflight-crew-mobility-webapp": "CREW_MOBILITY",
+        "iflight-crew-notification-webapp": "CREW_NOTIF",
+        "iflight-crew-rules-webapp": "CREW_RULE",
+        "iflight-crew-scheduler-webapp": "CREW_SCHED",
+        "iflight-crew-stats-webapp": "CREW_STATS",
+        "iflight-crew-webapp": "CREW_WEB"
+    }
+}
