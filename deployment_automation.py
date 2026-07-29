@@ -364,6 +364,33 @@ def fast_sftp_download(sftp, remote_path, local_path, progress_callback=None, ca
     return md5_hash.hexdigest(), file_size
 
 
+def fast_download(ssh_conn, sftp_conn, remote_path, local_path, progress_callback=None, cancel_check=None, use_scp=True):
+    """High-speed download attempting SCP first with explicit protocol logging and SFTP fallback."""
+    file_size = sftp_conn.stat(remote_path).st_size
+
+    if use_scp:
+        try:
+            from scp import SCPClient
+            print(f"\n  🚀 [PROTOCOL: SCP] Downloading {os.path.basename(remote_path)} ({file_size/(1024*1024):.1f} MB)...")
+            
+            def scp_cb(filename, size, sent):
+                if progress_callback:
+                    progress_callback(sent, size)
+
+            with SCPClient(ssh_conn.get_transport(), progress=scp_cb, socket_timeout=60.0) as scp:
+                scp.get(remote_path, local_path)
+
+            print(f"\n  ✓ [PROTOCOL: SCP] Download finished.")
+            return calculate_local_md5(local_path), file_size
+        except ImportError:
+            print("  [INFO] Python 'scp' module not available. Falling back to SFTP...")
+        except Exception as e:
+            print(f"  [WARNING] SCP failed ({e}). Falling back to SFTP (prefetch mode)...")
+
+    print(f"\n  ⬇ [PROTOCOL: SFTP] Downloading {os.path.basename(remote_path)} ({file_size/(1024*1024):.1f} MB) via SFTP prefetch...")
+    return fast_sftp_download(sftp_conn, remote_path, local_path, progress_callback=progress_callback, cancel_check=cancel_check)
+
+
 def calculate_local_md5(file_path):
     """Calculate MD5 checksum of local file (1 MB read chunks)"""
     md5_hash = hashlib.md5()
@@ -428,7 +455,8 @@ def step1_package_and_upload(config, source_password, sftp_password):
                 mb_tot = total / (1024 * 1024)
                 print(f"\r  [{_prefix}] {pct:.1f}% ({mb_tr:.1f}/{mb_tot:.1f} MB)", end='')
 
-            local_md5, file_size = fast_sftp_download(sftp_conn, remote_path, local_path, progress_callback=progress)
+            use_scp = getattr(config, 'USE_SCP', True)
+            local_md5, file_size = fast_download(ssh_conn, sftp_conn, remote_path, local_path, progress_callback=progress, use_scp=use_scp)
             elapsed  = max(0.1, time.time() - start_t)
             speed_mb = (file_size / (1024 * 1024)) / elapsed
 
@@ -456,7 +484,8 @@ def step1_package_and_upload(config, source_password, sftp_password):
                 return None
 
             remote_md5 = get_remote_md5(ssh_conn, remote_tar)
-            local_md5, _size = fast_sftp_download(sftp_conn, remote_tar, local_path)
+            use_scp = getattr(config, 'USE_SCP', True)
+            local_md5, _size = fast_download(ssh_conn, sftp_conn, remote_tar, local_path, use_scp=use_scp)
             ssh_conn.execute_command(f"rm -f '{remote_tar}'")
 
             with print_lock:

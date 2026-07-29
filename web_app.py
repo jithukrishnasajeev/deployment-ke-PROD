@@ -219,7 +219,7 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
         try:
             from scp import SCPClient
             
-            log_message(f"  🚀 SCP Download {format_size(file_size)}...", 'info')
+            log_message(f"  🚀 [PROTOCOL: SCP] Starting SCP Download ({format_size(file_size)})...", 'info')
             
             # Progress tracking
             transferred = [0]
@@ -247,16 +247,16 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
             
             elapsed = max(0.1, time.time() - start_time)
             speed = file_size / elapsed / 1024 / 1024
-            log_message(f"  ✓ SCP Download completed in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
-            return None
+            log_message(f"  ✓ [PROTOCOL: SCP] Download completed in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
+            return calculate_local_md5(local_path)
             
         except ImportError:
-            log_message(f"  ⚠ SCP module not available, falling back to SFTP", 'warning')
+            log_message(f"  ⚠ SCP module not installed, falling back to SFTP", 'warning')
         except Exception as e:
-            log_message(f"  ⚠ SCP failed: {str(e)}, using SFTP", 'warning')
+            log_message(f"  ⚠ [SCP FAILED] {str(e)} — falling back to SFTP (prefetch mode)", 'warning')
     
     # Fast SFTP download with prefetch + streaming MD5
-    log_message(f"  ⬇ Downloading {format_size(file_size)} (prefetch + streaming MD5)...", 'info')
+    log_message(f"  ⬇ [PROTOCOL: SFTP] Downloading {format_size(file_size)} (prefetch mode)...", 'info')
     callback = create_transfer_callback(war_prefix, war_name, file_size, 'downloading')
     
     start_time = time.time()
@@ -264,7 +264,7 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
     elapsed = max(0.1, time.time() - start_time)
     
     speed = file_size / elapsed / 1024 / 1024
-    log_message(f"  ✓ Downloaded in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
+    log_message(f"  ✓ [PROTOCOL: SFTP] Downloaded in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
     return local_md5
 
 
