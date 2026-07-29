@@ -381,6 +381,22 @@ def get_s3_file_size(s3_uri, profile):
     return 0
 
 
+def parse_bytes(val_str, unit_str):
+    """Convert number and unit (MiB, KiB, GiB, Bytes) to integer bytes"""
+    try:
+        val = float(val_str)
+        unit = unit_str.upper()
+        if 'G' in unit:
+            return int(val * 1024 * 1024 * 1024)
+        elif 'M' in unit:
+            return int(val * 1024 * 1024)
+        elif 'K' in unit:
+            return int(val * 1024)
+        return int(val)
+    except Exception:
+        return 0
+
+
 def format_size_human(size_bytes):
     """Convert bytes to human readable format (e.g., 376M)"""
     if size_bytes == 0:
@@ -441,33 +457,66 @@ def deploy_step1(config, selected_wars):
                 war_file = f"{war_prefix}-{config.VERSION}.war"
                 war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
                 
-                with download_lock:
-                    log_message(f"[{idx}/{len(selected_wars)}] Downloading from S3: {war_name}", 'info')
-                    update_file_size(war_prefix, war_name, status='downloading')
-                
                 s3_uri = f"s3://{bucket}/{s3_prefix}{war_file}"
                 local_war = os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file)
                 
-                try:
-                    s3_total_size = get_s3_file_size(s3_uri, profile)
+                s3_total_size = get_s3_file_size(s3_uri, profile)
+                
+                with download_lock:
+                    log_message(f"[{idx}/{len(selected_wars)}] Downloading from S3: {war_name}", 'info')
+                    update_file_size(
+                        war_prefix, war_name,
+                        source_size=s3_total_size if s3_total_size > 0 else 0,
+                        total_size=s3_total_size if s3_total_size > 0 else 0,
+                        transferred=0,
+                        transfer_progress=0,
+                        status='downloading'
+                    )
                     if s3_total_size > 0:
-                        with download_lock:
-                            update_file_size(war_prefix, war_name, source_size=s3_total_size, total_size=s3_total_size, status='downloading')
-                            log_message(f"  📦 {war_name}: S3 WAR {format_size(s3_total_size)}", 'info')
-                    
+                        log_message(f"  📦 {war_name}: S3 Object Size {format_size(s3_total_size)}", 'info')
+                
+                try:
                     aws_bin = get_aws_cmd()
                     cmd = [aws_bin, "s3", "cp", s3_uri, local_war, "--profile", profile]
-                    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
                     
-                    # Monitor live progress while downloading
+                    last_update = [0]
+                    transferred_ref = [0]
+                    
+                    def stream_reader():
+                        buffer = ""
+                        while True:
+                            char = proc.stdout.read(1)
+                            if not char:
+                                break
+                            if char in ('\r', '\n'):
+                                line = buffer.strip()
+                                buffer = ""
+                                if line:
+                                    m = re.search(r'Completed\s+([\d\.]+)\s*([A-Za-z]+)/([\d\.]+)\s*([A-Za-z]+)', line)
+                                    if m:
+                                        cur_val, cur_unit, tot_val, tot_unit = m.groups()
+                                        parsed_bytes = parse_bytes(cur_val, cur_unit)
+                                        transferred_ref[0] = max(transferred_ref[0], parsed_bytes)
+                            else:
+                                buffer += char
+                                
+                    reader_thread = threading.Thread(target=stream_reader, daemon=True)
+                    reader_thread.start()
+                    
                     while proc.poll() is None:
                         if deployment_state.get('cancelled'):
                             proc.terminate()
                             break
-                        if os.path.exists(local_war):
-                            current_bytes = os.path.getsize(local_war)
-                            tot = s3_total_size if s3_total_size > 0 else current_bytes
-                            percent = (current_bytes / tot * 100) if tot > 0 else 50
+                        
+                        file_bytes = os.path.getsize(local_war) if os.path.exists(local_war) else 0
+                        current_bytes = max(file_bytes, transferred_ref[0])
+                        tot = s3_total_size if s3_total_size > 0 else current_bytes
+                        percent = min(99.9, (current_bytes / tot * 100)) if tot > 0 else 50.0
+                        
+                        now = time.time()
+                        if now - last_update[0] >= 0.1:
+                            last_update[0] = now
                             with download_lock:
                                 update_file_size(
                                     war_prefix, war_name,
@@ -477,13 +526,17 @@ def deploy_step1(config, selected_wars):
                                     transfer_progress=percent,
                                     status='downloading'
                                 )
-                        time.sleep(0.3)
-                    
+                                current_file_frac = (current_bytes / tot) if tot > 0 else 0
+                                overall_p = ((completed_count[0] + current_file_frac) / len(selected_wars)) * 100
+                                update_progress(overall_p, war_name)
+                        time.sleep(0.05)
+                        
+                    reader_thread.join(timeout=2)
                     stdout, stderr = proc.communicate()
                     if proc.returncode != 0:
-                        raise Exception(f"AWS CLI Error: {stderr.strip() or stdout.strip()}")
-                    
-                    local_size = os.path.getsize(local_war) if os.path.exists(local_war) else s3_total_size
+                        raise Exception(f"AWS CLI Error: {stdout or stderr or 'Unknown error'}")
+                        
+                    local_size = os.path.getsize(local_war) if os.path.exists(local_war) else (transferred_ref[0] or s3_total_size)
                     local_md5 = calculate_local_md5(local_war)
                     
                     with download_lock:
@@ -496,10 +549,10 @@ def deploy_step1(config, selected_wars):
                             transfer_progress=100,
                             status='downloaded'
                         )
-                        log_message(f"  ✓ {war_name}: Downloaded & Verified {format_size(local_size)} from S3", 'success')
                         completed_count[0] += 1
                         deployment_state['completed_files'] = completed_count[0]
-                        update_progress(completed_count[0] / len(selected_wars) * 100, war_name)
+                        update_progress((completed_count[0] / len(selected_wars)) * 100, war_name)
+                        log_message(f"  ✓ {war_name}: Downloaded & Verified {format_size(local_size)} from S3", 'success')
                     return True
                 except Exception as e:
                     with download_lock:
