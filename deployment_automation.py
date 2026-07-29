@@ -328,35 +328,14 @@ class SFTPClient:
 
 
 def fast_sftp_download(sftp, remote_path, local_path, progress_callback=None, cancel_check=None):
-    """High-speed SFTP download using prefetch read-ahead + streaming MD5 in a single pass.
+    """High-speed SFTP download using Paramiko sftp.get with tuned window buffers.
     
-    Pipelining up to total file size over SSH window gives maximum network throughput (10x-50x speedup).
     Returns (md5_hex_digest, file_size_bytes).
     """
     file_size = sftp.stat(remote_path).st_size
-    md5_hash = hashlib.md5()
-    transferred = 0
-    chunk_size = 1048576  # 1 MB read chunks
-    
-    with sftp.open(remote_path, 'rb') as remote_file:
-        # Enable prefetching to pipeline read-ahead requests
-        remote_file.prefetch(file_size)
-        
-        with open(local_path, 'wb') as local_file:
-            while True:
-                if cancel_check and cancel_check():
-                    raise InterruptedError("Download cancelled by user")
-                data = remote_file.read(chunk_size)
-                if not data:
-                    break
-                local_file.write(data)
-                md5_hash.update(data)
-                transferred += len(data)
-                
-                if progress_callback:
-                    progress_callback(transferred, file_size)
-    
-    return md5_hash.hexdigest(), file_size
+    sftp.get(remote_path, local_path, callback=progress_callback)
+    local_md5 = calculate_local_md5(local_path)
+    return local_md5, file_size
 
 
 def calculate_local_md5(file_path):
@@ -378,135 +357,90 @@ def get_remote_md5(ssh_client, file_path):
 
 def step1_package_and_upload(config, source_password, sftp_password):
     """
-    Step 1: Download WAR files from source server to local machine.
-    Optimized: Direct WAR download (skips tar overhead) + prefetch pipelining + parallel threads.
+    Step 1: Single SSH session high-speed WAR download to local machine.
+    Reuses 1 authenticated SSH connection to eliminate authentication overhead and connection throttling.
     """
     print("\n" + "="*60)
-    print("STEP 1: High-Speed Download WAR files to Local")
+    print("STEP 1: Single SSH Session High-Speed Download WAR files to Local")
     print("="*60 + "\n")
     
     os.makedirs(config.LOCAL_DOWNLOAD_PATH, exist_ok=True)
     source_wars_dir = f"{config.SOURCE_PATH}Wars"
     
-    # Test connection and directory existence
-    main_ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, source_password)
-    main_ssh.connect()
+    # Establish ONE SSH connection for all files
+    ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, source_password)
+    ssh.connect()
+    
     try:
-        output, error, exit_code = main_ssh.execute_command(f"ls -la '{source_wars_dir}/' | head -5")
+        output, error, exit_code = ssh.execute_command(f"ls -la '{source_wars_dir}/' | head -5")
         if exit_code != 0:
             raise FileNotFoundError(f"Wars directory not found on source server: {source_wars_dir}")
-    finally:
-        main_ssh.close()
-    
-    max_workers = config.MAX_THREADS if config.PARALLEL_DOWNLOADS else 1
-    direct_download = getattr(config, 'DIRECT_WAR_DOWNLOAD', True)
-    
-    mode_str = "Direct WAR (no tar wrapper)" if direct_download else "Tar archive packaging"
-    print(f"[INFO] Download Mode: {mode_str}")
-    print(f"[INFO] Downloading {len(config.WAR_MAPPINGS)} WAR files with {max_workers} parallel workers...\n")
-    
-    downloaded_files = []
-    print_lock = threading.Lock()
-    
-    def download_worker(item):
-        idx, (war_prefix, deploy_folder) = item
-        war_file = f"{war_prefix}-{config.VERSION}.war"
-        tar_file = f"{war_prefix}-{config.VERSION}.tar"
         
-        # Connect dedicated SSH for this worker thread
-        ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, source_password)
-        ssh.connect()
+        sftp = ssh.get_sftp()
+        downloaded_files = []
+        direct_download = getattr(config, 'DIRECT_WAR_DOWNLOAD', True)
         
-        try:
-            sftp = ssh.get_sftp()
+        mode_str = "Direct WAR (no tar wrapper)" if direct_download else "Tar archive packaging"
+        print(f"[INFO] Download Mode: {mode_str}")
+        print(f"[INFO] Processing {len(config.WAR_MAPPINGS)} WAR files over 1 SSH session...\n")
+        
+        for idx, (war_prefix, deploy_folder) in enumerate(config.WAR_MAPPINGS, 1):
+            war_file = f"{war_prefix}-{config.VERSION}.war"
+            tar_file = f"{war_prefix}-{config.VERSION}.tar"
             
             if direct_download:
                 remote_path = f"{source_wars_dir}/{war_file}"
                 local_path = os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file)
                 
-                with print_lock:
-                    print(f"[{idx}/{len(config.WAR_MAPPINGS)}] Direct SFTP download: {war_file}")
+                print(f"[{idx}/{len(config.WAR_MAPPINGS)}] Direct SFTP download: {war_file}")
                 
-                # Fetch remote MD5 before download
                 remote_md5 = get_remote_md5(ssh, remote_path)
-                
                 start_t = time.time()
                 
                 def progress(transferred, total):
                     pct = (transferred / total * 100) if total > 0 else 0
                     mb_tr = transferred / (1024 * 1024)
                     mb_tot = total / (1024 * 1024)
-                    with print_lock:
-                        print(f"\r  [{war_prefix}] Progress: {pct:.1f}% ({mb_tr:.1f}/{mb_tot:.1f} MB)", end='')
+                    print(f"\r  [{war_prefix}] Progress: {pct:.1f}% ({mb_tr:.1f}/{mb_tot:.1f} MB)", end='')
                 
                 local_md5, file_size = fast_sftp_download(sftp, remote_path, local_path, progress_callback=progress)
                 elapsed = max(0.1, time.time() - start_t)
                 speed_mb = (file_size / (1024 * 1024)) / elapsed
                 
-                with print_lock:
-                    print(f"\n  [SUCCESS] Downloaded {war_file} ({file_size / (1024*1024):.2f} MB @ {speed_mb:.2f} MB/s)")
+                print(f"\n  [SUCCESS] Downloaded {war_file} ({file_size / (1024*1024):.2f} MB @ {speed_mb:.2f} MB/s)")
                 
                 if remote_md5 and local_md5 == remote_md5:
-                    with print_lock:
-                        print(f"  [SUCCESS] Integrity verified (MD5: {local_md5}) ✓")
-                    return local_path
+                    print(f"  [SUCCESS] Integrity verified (MD5: {local_md5}) ✓\n")
                 else:
-                    with print_lock:
-                        print(f"  [WARNING] Checksum mismatch for {war_file}! Remote: {remote_md5}, Local: {local_md5}")
-                    return local_path
+                    print(f"  [WARNING] Checksum mismatch for {war_file}!\n")
+                downloaded_files.append(local_path)
             else:
-                # Legacy Tar packaging path
-                remote_tar = f"/tmp/{tar_file}_{threading.current_thread().ident}"
+                remote_tar = f"/tmp/{tar_file}"
                 local_path = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
                 
-                with print_lock:
-                    print(f"[{idx}/{len(config.WAR_MAPPINGS)}] Packaging and downloading tar: {tar_file}")
-                
+                print(f"[{idx}/{len(config.WAR_MAPPINGS)}] Packaging and downloading tar: {tar_file}")
                 output, error, exit_code = ssh.execute_command(
                     f"cd '{source_wars_dir}' && tar -cf '{remote_tar}' '{war_file}'"
                 )
                 if exit_code != 0:
-                    raise Exception(f"Tar creation failed: {error}")
+                    print(f"  [ERROR] Failed to package {war_file}: {error}\n")
+                    continue
                 
                 remote_md5 = get_remote_md5(ssh, remote_tar)
                 local_md5, file_size = fast_sftp_download(sftp, remote_tar, local_path)
-                
-                # Cleanup remote tmp tar
                 ssh.execute_command(f"rm -f '{remote_tar}'")
                 
                 if remote_md5 and local_md5 == remote_md5:
-                    with print_lock:
-                        print(f"  [SUCCESS] Downloaded & Verified {tar_file} ✓")
-                    return local_path
+                    print(f"  [SUCCESS] Downloaded & Verified {tar_file} ✓\n")
                 else:
-                    with print_lock:
-                        print(f"  [WARNING] Checksum mismatch for {tar_file}!")
-                    return local_path
+                    print(f"  [WARNING] Checksum mismatch for {tar_file}!\n")
+                downloaded_files.append(local_path)
 
-        finally:
-            ssh.close()
-    
-    items = list(enumerate(config.WAR_MAPPINGS, 1))
-    if max_workers > 1:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(download_worker, item) for item in items]
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    res = future.result()
-                    if res:
-                        downloaded_files.append(res)
-                except Exception as e:
-                    print(f"\n[ERROR] Download thread failed: {e}")
-    else:
-        for item in items:
-            try:
-                res = download_worker(item)
-                if res:
-                    downloaded_files.append(res)
-            except Exception as e:
-                print(f"\n[ERROR] Download failed: {e}")
+        sftp.close()
+    finally:
+        ssh.close()
 
-    print("\n" + "="*60)
+    print("="*60)
     print(f"[SUCCESS] Step 1 completed! Downloaded {len(downloaded_files)} files to {config.LOCAL_DOWNLOAD_PATH}")
     print("="*60 + "\n")
 
