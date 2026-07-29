@@ -122,9 +122,8 @@ def fast_sftp_download(sftp, remote_path, local_path, war_prefix, war_name, call
     transferred = 0
     
     with sftp.open(remote_path, 'rb') as remote_file:
-        # Enable read-ahead prefetching — use default buffer size for better stability
-        remote_file.prefetch()
-        remote_file.MAX_REQUEST_SIZE = 65536  # 64 KB per request (default 32 KB)
+        # Enable read-ahead prefetching with full file size for pipelining
+        remote_file.prefetch(file_size)
         
         with open(local_path, 'wb') as local_file:
             while True:
@@ -184,7 +183,7 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
             with SCPClient(ssh.get_transport(), progress=scp_progress, socket_timeout=60.0) as scp:
                 scp.put(local_path, remote_path)
             
-            elapsed = time.time() - start_time
+            elapsed = max(0.1, time.time() - start_time)
             speed = file_size / elapsed / 1024 / 1024
             log_message(f"  ✓ SCP Upload completed in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
             return
@@ -192,7 +191,7 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
         except ImportError:
             log_message(f"  ⚠ SCP module not available (pip install scp), falling back to SFTP", 'warning')
         except Exception as e:
-            log_message(f"  ⚠ SCP failed: {str(e)}, falling back to SFTP (slower)", 'warning')
+            log_message(f"  ⚠ SCP failed: {str(e)}, falling back to SFTP", 'warning')
     
     # Standard SFTP upload (stable fallback)
     sftp = ssh.get_sftp()
@@ -201,9 +200,9 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
     
     start_time = time.time()
     
-    # ---> THE SPEED FIX IS HERE: Added confirm=False <---
+    # Speed fix: confirm=False for pipeline mode
     sftp.put(local_path, remote_path, callback=callback, confirm=False)
-    elapsed = time.time() - start_time
+    elapsed = max(0.1, time.time() - start_time)
     
     speed = file_size / elapsed / 1024 / 1024
     log_message(f"  ✓ Uploaded in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
@@ -216,12 +215,11 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
     sftp = ssh.get_sftp()
     file_size = sftp.stat(remote_path).st_size
     
-    # Try SCP if enabled (20-40% faster but needs proper server support)  
+    # Try SCP if enabled  
     if use_scp:
         try:
             from scp import SCPClient
             
-            sftp.close()  # Close SFTP before using SCP
             log_message(f"  🚀 SCP Download {format_size(file_size)}...", 'info')
             
             # Progress tracking
@@ -245,21 +243,18 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
             
             start_time = time.time()
             
-            # Use existing SSH transport for SCP
             with SCPClient(ssh.get_transport(), progress=scp_progress, socket_timeout=60.0) as scp:
                 scp.get(remote_path, local_path)
             
-            elapsed = time.time() - start_time
+            elapsed = max(0.1, time.time() - start_time)
             speed = file_size / elapsed / 1024 / 1024
             log_message(f"  ✓ SCP Download completed in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
-            return None  # No streaming MD5 with SCP, caller should compute separately
+            return None
             
         except ImportError:
             log_message(f"  ⚠ SCP module not available, falling back to SFTP", 'warning')
-            sftp = ssh.get_sftp()  # Reopen SFTP
         except Exception as e:
             log_message(f"  ⚠ SCP failed: {str(e)}, using SFTP", 'warning')
-            sftp = ssh.get_sftp()  # Reopen SFTP
     
     # Fast SFTP download with prefetch + streaming MD5
     log_message(f"  ⬇ Downloading {format_size(file_size)} (prefetch + streaming MD5)...", 'info')
@@ -267,11 +262,11 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
     
     start_time = time.time()
     local_md5 = fast_sftp_download(sftp, remote_path, local_path, war_prefix, war_name, callback)
-    elapsed = time.time() - start_time
+    elapsed = max(0.1, time.time() - start_time)
     
     speed = file_size / elapsed / 1024 / 1024
     log_message(f"  ✓ Downloaded in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
-    return local_md5  # Return pre-computed MD5 to skip separate verification pass
+    return local_md5
 
 
 def broadcast_message(msg_type, data):
@@ -336,7 +331,7 @@ def update_file_size(war_prefix, war_name, source_size=None, target_size=None, s
 
 def get_remote_file_size(ssh, file_path):
     """Get size of remote file in bytes"""
-    stdin, stdout, stderr = ssh.exec_command(f"stat -c%s {file_path} 2>/dev/null || echo 0")
+    stdin, stdout, stderr = ssh.exec_command(f"stat -c%s '{file_path}' 2>/dev/null || echo 0")
     try:
         return int(stdout.read().decode().strip())
     except:
@@ -357,10 +352,10 @@ def format_size_human(size_bytes):
 
 
 def deploy_step1(config, selected_wars):
-    """Step 1: Download selected WAR files with parallel threading"""
+    """Step 1: High-Speed Direct WAR download to local with parallel threading"""
     try:
         log_message("═" * 50, 'info')
-        log_message("STEP 1: Package and Download to Local", 'success')
+        log_message("STEP 1: High-Speed Direct Download to Local", 'success')
         log_message("═" * 50, 'info')
         
         os.makedirs(config.LOCAL_DOWNLOAD_PATH, exist_ok=True)
@@ -369,8 +364,11 @@ def deploy_step1(config, selected_wars):
         deployment_state['completed_files'] = 0
         deployment_state['file_sizes'] = {}
         
-        # Use ThreadPoolExecutor for parallel downloads (max 3 concurrent)
-        max_workers = min(3, len(selected_wars))
+        max_workers = min(getattr(config, 'MAX_THREADS', 4), len(selected_wars))
+        direct_war = getattr(config, 'DIRECT_WAR_DOWNLOAD', True)
+        
+        if direct_war:
+            log_message("🚀 Direct WAR Download Enabled (skipping tar packaging overhead)", 'success')
         log_message(f"🚀 Starting parallel download with {max_workers} threads", 'info')
         
         download_lock = threading.Lock()
@@ -394,8 +392,6 @@ def deploy_step1(config, selected_wars):
                 
                 source_wars_dir = f"{config.SOURCE_PATH}Wars"
                 remote_war = f"{source_wars_dir}/{war_file}"
-                remote_tar = f"/tmp/{tar_file}_{threading.current_thread().ident}"
-                local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
                 
                 # Get source WAR file size
                 source_war_size = get_remote_file_size(ssh, remote_war)
@@ -403,37 +399,53 @@ def deploy_step1(config, selected_wars):
                     update_file_size(war_prefix, war_name, source_size=source_war_size)
                     log_message(f"  📦 {war_name}: Source WAR {format_size(source_war_size)}", 'info')
                 
-                # Package without gzip (WAR files are already ZIP-compressed)
-                with download_lock:
-                    log_message(f"  ⚙ {war_name}: Packaging (no gzip)...", 'info')
-                stdin, stdout, stderr = ssh.exec_command(
-                    f"cd {source_wars_dir} && tar -cf {remote_tar} {war_file}"
-                )
-                stdout.channel.recv_exit_status()
-                
-                # Download with prefetch + streaming MD5
                 use_scp = getattr(config, 'USE_SCP', False)
-                local_md5 = sftp_download_optimized(ssh, remote_tar, local_tar, war_prefix, war_name, use_scp)
                 
-                # Verify — use streaming MD5 if available, otherwise compute separately
-                with download_lock:
-                    log_message(f"  🔐 {war_name}: Verifying MD5...", 'info')
-                remote_md5 = get_remote_md5(ssh, remote_tar)
-                if local_md5 is None:
-                    # SCP path — need to compute MD5 separately
-                    local_md5 = calculate_local_md5(local_tar)
-                
-                if remote_md5 and local_md5 == remote_md5:
+                if direct_war:
+                    local_war = os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file)
+                    local_md5 = sftp_download_optimized(ssh, remote_war, local_war, war_prefix, war_name, use_scp)
+                    
                     with download_lock:
-                        log_message(f"  ✓ {war_name}: Integrity verified", 'success')
-                        update_file_size(war_prefix, war_name, status='downloaded')
+                        log_message(f"  🔐 {war_name}: Verifying MD5...", 'info')
+                    remote_md5 = get_remote_md5(ssh, remote_war)
+                    if local_md5 is None:
+                        local_md5 = calculate_local_md5(local_war)
+                    
+                    if remote_md5 and local_md5 == remote_md5:
+                        with download_lock:
+                            log_message(f"  ✓ {war_name}: Integrity verified", 'success')
+                            update_file_size(war_prefix, war_name, status='downloaded')
+                    else:
+                        with download_lock:
+                            log_message(f"  ⚠ {war_name}: Checksum mismatch!", 'warning')
+                            update_file_size(war_prefix, war_name, status='warning')
                 else:
+                    remote_tar = f"/tmp/{tar_file}_{threading.current_thread().ident}"
+                    local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
+                    
                     with download_lock:
-                        log_message(f"  ⚠ {war_name}: Checksum mismatch!", 'warning')
-                        update_file_size(war_prefix, war_name, status='warning')
+                        log_message(f"  ⚙ {war_name}: Packaging tar...", 'info')
+                    stdin, stdout, stderr = ssh.exec_command(
+                        f"cd '{source_wars_dir}' && tar -cf '{remote_tar}' '{war_file}'"
+                    )
+                    stdout.channel.recv_exit_status()
+                    
+                    local_md5 = sftp_download_optimized(ssh, remote_tar, local_tar, war_prefix, war_name, use_scp)
+                    remote_md5 = get_remote_md5(ssh, remote_tar)
+                    ssh.exec_command(f"rm -f '{remote_tar}'")
+                    
+                    if local_md5 is None:
+                        local_md5 = calculate_local_md5(local_tar)
+                    
+                    if remote_md5 and local_md5 == remote_md5:
+                        with download_lock:
+                            log_message(f"  ✓ {war_name}: Integrity verified", 'success')
+                            update_file_size(war_prefix, war_name, status='downloaded')
+                    else:
+                        with download_lock:
+                            log_message(f"  ⚠ {war_name}: Checksum mismatch!", 'warning')
+                            update_file_size(war_prefix, war_name, status='warning')
                 
-                # Cleanup
-                ssh.exec_command(f"rm -f {remote_tar}")
                 ssh.close()
                 
                 with download_lock:
@@ -495,17 +507,32 @@ def deploy_step2(config, selected_wars):
 
         missing_files = []
         for war_prefix in selected_wars:
+            war_file = f"{war_prefix}-{config.VERSION}.war"
+            zip_file = f"{war_prefix}-{config.VERSION}.zip"
+            war_zip_file = f"{war_prefix}-{config.VERSION}.war.zip"
             tar_file = f"{war_prefix}-{config.VERSION}.tar"
-            local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
+            
+            candidates = [
+                os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file),
+                os.path.join(config.LOCAL_DOWNLOAD_PATH, zip_file),
+                os.path.join(config.LOCAL_DOWNLOAD_PATH, war_zip_file),
+                os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file),
+            ]
+            
+            local_file = None
+            for candidate in candidates:
+                if os.path.exists(candidate):
+                    local_file = candidate
+                    break
+            
             war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
             
-            if os.path.exists(local_tar):
-                # Update state with local size if not already set (helpful if Step 2 run separately)
-                local_size = os.path.getsize(local_tar)
+            if local_file:
+                local_size = os.path.getsize(local_file)
                 if war_prefix not in deployment_state['file_sizes'] or deployment_state['file_sizes'][war_prefix].get('source_size', 0) == 0:
                     update_file_size(war_prefix, war_name, source_size=local_size)
             else:
-                missing_files.append(tar_file)
+                missing_files.append(war_file)
         
         if missing_files:
             log_message(f"✗ Missing files in local path: {config.LOCAL_DOWNLOAD_PATH}", 'error')
@@ -556,8 +583,6 @@ def deploy_step2(config, selected_wars):
         log_message(f"  🔗 Connecting to primary node for initial directory setup...", 'info')
 
         # Throttle parallel workers based on available routes.
-        # Single route = all traffic hits one PAM host — cap at 3 with stagger to
-        # avoid MaxStartups drops. Multiple routes = spread load, allow up to 10.
         single_route_mode = len(target_routes) == 1
         max_workers = min(3, len(selected_wars)) if single_route_mode else min(10, len(selected_wars))
         stagger_delay = 2.0 if single_route_mode else 0  # seconds between job submissions
@@ -569,12 +594,8 @@ def deploy_step2(config, selected_wars):
         completed_count = [0]
         errors = []
         
-        # Per-host semaphores: strictly serialize SSH handshakes per PAM server.
-        # PAM_NV appears to enforce MaxStartups=1 for new connections, dropping
-        # concurrent handshakes. Semaphore(1) queues threads instead of dropping them.
         pam_semaphores = {}
         semaphore_lock = threading.Lock()
-        # dead_routes and dead_route_lock already initialised by pre-flight block above
 
         def get_host_semaphore(host):
             with semaphore_lock:
@@ -591,75 +612,119 @@ def deploy_step2(config, selected_wars):
                 candidate = (idx + offset) % n
                 if candidate not in dead:
                     return candidate, target_routes[candidate]
-            # All routes dead — fall back to original assignment
             return idx % n, target_routes[idx % n]
 
         def upload_single_war(item):
-            """Upload and extract single WAR file using a specifically assigned route"""
+            """Upload and deploy single WAR file using a specifically assigned route"""
             idx, war_prefix = item
-            route_idx = idx % len(target_routes)  # updated by pick_route
+            route_idx = idx % len(target_routes)
             try:
                 war_file = f"{war_prefix}-{config.VERSION}.war"
+                zip_file = f"{war_prefix}-{config.VERSION}.zip"
+                war_zip_file = f"{war_prefix}-{config.VERSION}.war.zip"
                 tar_file = f"{war_prefix}-{config.VERSION}.tar"
+                
+                candidates = [
+                    os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file),
+                    os.path.join(config.LOCAL_DOWNLOAD_PATH, zip_file),
+                    os.path.join(config.LOCAL_DOWNLOAD_PATH, war_zip_file),
+                    os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file),
+                ]
+                
+                local_file = None
+                for candidate in candidates:
+                    if os.path.exists(candidate):
+                        local_file = candidate
+                        break
+                
+                if not local_file:
+                    raise FileNotFoundError(f"No local artifact found for {war_prefix}")
+                
                 war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
+                filename = os.path.basename(local_file)
 
-                # Pick a live route (skips routes that already failed to connect)
                 route_idx, assigned_route = pick_route(idx)
                 pam_host = assigned_route['host'].split('.')[0]
                 target_ip = assigned_route['username'].split('%')[-1]
 
                 with upload_lock:
-                    log_message(f"[{idx+1}/{len(selected_wars)}] {war_name} -> {pam_host} -> {target_ip}", 'info')
+                    log_message(f"[{idx+1}/{len(selected_wars)}] {war_name} ({filename}) -> {pam_host} -> {target_ip}", 'info')
                     update_file_size(war_prefix, war_name, status='uploading')
 
-                # Throttle concurrent auth to same PAM host to avoid MaxStartups rejection
                 host_sem = get_host_semaphore(assigned_route['host'])
                 try:
                     with host_sem:
                         ssh = SSHClient(assigned_route['host'], assigned_route['username'], config.TARGET_PASSWORD)
                         ssh.connect()
                 except Exception:
-                    # Mark this route dead so subsequent WARs skip it
                     with dead_route_lock:
                         dead_routes.add(route_idx)
                     with upload_lock:
                         log_message(f"  ✗ Route {route_idx} ({pam_host}) unreachable — blacklisted for this run", 'warning')
                     raise
-                # SSH authenticated — semaphore released when 'with host_sem' exits above
                 
-                # Transport tuning is now handled by SSHClient.connect()
-                # No need for duplicate tuning here
+                use_scp = getattr(config, 'USE_SCP', False)
+                ssh.exec_command(f"mkdir -p '{config.TARGET_EXTRACT_PATH}'")
                 
-                local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
-                target_tar_path = f"/tmp/{tar_file}_{threading.current_thread().ident}"
-                
-                # Upload using SCP
-                sftp_upload_optimized(ssh, local_tar, target_tar_path, war_prefix, war_name, use_scp=True)
-                
-                # Verify
-                local_md5 = calculate_local_md5(local_tar)
-                remote_md5 = get_remote_md5(ssh, target_tar_path)
-                
-                if not remote_md5 or local_md5 != remote_md5:
+                if filename.endswith('.war'):
+                    target_remote_path = f"{config.TARGET_EXTRACT_PATH}/{war_file}"
+                    sftp_upload_optimized(ssh, local_file, target_remote_path, war_prefix, war_name, use_scp=use_scp)
+                    
+                    local_md5 = calculate_local_md5(local_file)
+                    remote_md5 = get_remote_md5(ssh, target_remote_path)
+                    
+                    if not remote_md5 or local_md5 != remote_md5:
+                        with upload_lock:
+                            log_message(f"  ⚠ {war_name} ({pam_host}): MD5 mismatch!", 'warning')
+                elif filename.endswith('.zip'):
+                    tmp_zip_path = f"/tmp/{filename}_{threading.current_thread().ident}"
+                    sftp_upload_optimized(ssh, local_file, tmp_zip_path, war_prefix, war_name, use_scp=use_scp)
+                    
+                    local_md5 = calculate_local_md5(local_file)
+                    remote_md5 = get_remote_md5(ssh, tmp_zip_path)
+                    
+                    if not remote_md5 or local_md5 != remote_md5:
+                        with upload_lock:
+                            log_message(f"  ⚠ {war_name} ({pam_host}): MD5 mismatch!", 'warning')
+                    
                     with upload_lock:
-                        log_message(f"  ⚠ {war_name} ({pam_host}): MD5 mismatch!", 'warning')
-                
-                # Extract (mkdir -p ensures dir exists regardless of pre-check)
-                with upload_lock:
-                    log_message(f"  📂 {war_name}: Extracting via {target_ip}...", 'info')
-                    update_file_size(war_prefix, war_name, status='extracting')
-                
-                ssh.exec_command(f"mkdir -p {config.TARGET_EXTRACT_PATH}")
-                stdin, stdout, stderr = ssh.exec_command(
-                    f"cd {config.TARGET_EXTRACT_PATH} && tar -xf {target_tar_path}",
-                    timeout=300
-                )
-                
-                if stdout.channel.recv_exit_status() != 0:
-                    raise Exception(f"Extraction failed: {stderr.read().decode().strip()}")
-                
-                # Cleanup
-                ssh.exec_command(f"rm -f {target_tar_path}")
+                        log_message(f"  📂 {war_name}: Unzipping via {target_ip}...", 'info')
+                        update_file_size(war_prefix, war_name, status='extracting')
+                    
+                    unzip_cmd = (
+                        f"unzip -o -q '{tmp_zip_path}' -d '{config.TARGET_EXTRACT_PATH}' || "
+                        f"python3 -m zipfile -e '{tmp_zip_path}' '{config.TARGET_EXTRACT_PATH}'"
+                    )
+                    stdin, stdout, stderr = ssh.exec_command(unzip_cmd, timeout=300)
+                    
+                    if stdout.channel.recv_exit_status() != 0:
+                        raise Exception(f"Unzip failed: {stderr.read().decode().strip()}")
+                    
+                    ssh.exec_command(f"rm -f '{tmp_zip_path}'")
+                else:
+                    target_tar_path = f"/tmp/{filename}_{threading.current_thread().ident}"
+                    sftp_upload_optimized(ssh, local_file, target_tar_path, war_prefix, war_name, use_scp=use_scp)
+                    
+                    local_md5 = calculate_local_md5(local_file)
+                    remote_md5 = get_remote_md5(ssh, target_tar_path)
+                    
+                    if not remote_md5 or local_md5 != remote_md5:
+                        with upload_lock:
+                            log_message(f"  ⚠ {war_name} ({pam_host}): MD5 mismatch!", 'warning')
+                    
+                    with upload_lock:
+                        log_message(f"  📂 {war_name}: Extracting tar via {target_ip}...", 'info')
+                        update_file_size(war_prefix, war_name, status='extracting')
+                    
+                    stdin, stdout, stderr = ssh.exec_command(
+                        f"cd '{config.TARGET_EXTRACT_PATH}' && tar -xf '{target_tar_path}'",
+                        timeout=300
+                    )
+                    
+                    if stdout.channel.recv_exit_status() != 0:
+                        raise Exception(f"Tar extraction failed: {stderr.read().decode().strip()}")
+                    
+                    ssh.exec_command(f"rm -f '{target_tar_path}'")
                 
                 # Get final size
                 deployed_war = f"{config.TARGET_EXTRACT_PATH}/{war_file}"

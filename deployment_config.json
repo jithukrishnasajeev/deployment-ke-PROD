@@ -28,12 +28,13 @@
         "target_deploy_base": "/iflightneo/global/PROD/ifl_prod_KE_crew/NonMS/Deployments"
     },
     "transfer_optimization": {
-        "enabled": false,
+        "enabled": true,
         "protocol": "SFTP",
         "compression": false,
         "parallel_downloads": true,
-        "max_threads": 3,
-        "comments": "Network speed is the bottleneck (~0.2 MB/s). Parallel downloads with 3 threads for faster Step 1. SCP not supported by server."
+        "max_threads": 4,
+        "direct_war_download": true,
+        "comments": "High-speed SFTP download using prefetch pipelining, streaming MD5, parallel threads, and direct WAR transfer."
     },
     "war_mappings": {
         "iflight-crew-cwp-webapp": "CREW_CWP",
