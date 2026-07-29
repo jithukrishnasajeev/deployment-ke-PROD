@@ -178,8 +178,8 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
             
             start_time = time.time()
             
-            # Use existing SSH transport for SCP
-            with SCPClient(ssh.get_transport(), progress=scp_progress, socket_timeout=60.0) as scp:
+            # Use existing SSH transport for SCP with 64KB buffer for full throughput
+            with SCPClient(ssh.get_transport(), buff_size=65536, progress=scp_progress, socket_timeout=60.0) as scp:
                 scp.put(local_path, remote_path)
             
             elapsed = max(0.1, time.time() - start_time)
@@ -190,6 +190,8 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
         except ImportError:
             log_message(f"  ⚠ SCP module not available (pip install scp), falling back to SFTP", 'warning')
         except Exception as e:
+            if deployment_state.get('cancelled') or "Cancellation requested" in str(e):
+                raise
             log_message(f"  ⚠ SCP failed: {str(e)}, falling back to SFTP", 'warning')
     
     # Standard SFTP upload (stable fallback)
@@ -242,7 +244,7 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
             
             start_time = time.time()
             
-            with SCPClient(ssh.get_transport(), progress=scp_progress, socket_timeout=60.0) as scp:
+            with SCPClient(ssh.get_transport(), buff_size=65536, progress=scp_progress, socket_timeout=60.0) as scp:
                 scp.get(remote_path, local_path)
             
             elapsed = max(0.1, time.time() - start_time)
@@ -253,6 +255,8 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
         except ImportError:
             log_message(f"  ⚠ SCP module not installed, falling back to SFTP", 'warning')
         except Exception as e:
+            if deployment_state.get('cancelled') or "Cancellation requested" in str(e):
+                raise
             log_message(f"  ⚠ [SCP FAILED] {str(e)} — falling back to SFTP (prefetch mode)", 'warning')
     
     # Fast SFTP download with prefetch + streaming MD5
@@ -1112,6 +1116,9 @@ def update_advanced_config():
         if 'war_mappings' in data:
             config['war_mappings'] = data['war_mappings']
         
+        if 'transfer_optimization' in data:
+            config['transfer_optimization'] = data['transfer_optimization']
+        
         # Save updated config
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=4)
@@ -1150,6 +1157,15 @@ def reset_config():
                 "source_base": "/iflightneo/S3_BUILD/NonMS/KE",
                 "target_utilities": "/iflightneo/global/Utilities",
                 "target_deploy_base": "/iflightneo/global/PROD/ifl_prod_KE_crew/NonMS/Deployments"
+            },
+            "transfer_optimization": {
+                "enabled": true,
+                "protocol": "SCP",
+                "compression": false,
+                "parallel_downloads": true,
+                "max_threads": 4,
+                "direct_war_download": true,
+                "comments": "High-speed multi-threaded SCP download with socket window tuning."
             },
             "war_mappings": {
                 "iflight-crew-cwp-webapp": "CREW_CWP",

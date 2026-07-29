@@ -29,12 +29,12 @@
     },
     "transfer_optimization": {
         "enabled": true,
-        "protocol": "SFTP",
+        "protocol": "SCP",
         "compression": false,
-        "parallel_downloads": false,
-        "max_threads": 1,
+        "parallel_downloads": true,
+        "max_threads": 4,
         "direct_war_download": true,
-        "comments": "High-speed SFTP download using single SSH session, tuned window buffers, streaming MD5, and direct WAR transfer."
+        "comments": "High-speed SCP download with 4 parallel threads and direct WAR transfer."
     },
     "war_mappings": {
         "iflight-crew-cwp-webapp": "CREW_CWP",

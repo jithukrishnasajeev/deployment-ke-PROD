@@ -374,10 +374,12 @@ def fast_download(ssh_conn, sftp_conn, remote_path, local_path, progress_callbac
             print(f"\n  🚀 [PROTOCOL: SCP] Downloading {os.path.basename(remote_path)} ({file_size/(1024*1024):.1f} MB)...")
             
             def scp_cb(filename, size, sent):
+                if cancel_check and cancel_check():
+                    raise InterruptedError("Download cancelled by caller")
                 if progress_callback:
                     progress_callback(sent, size)
 
-            with SCPClient(ssh_conn.get_transport(), progress=scp_cb, socket_timeout=60.0) as scp:
+            with SCPClient(ssh_conn.get_transport(), buff_size=65536, progress=scp_cb, socket_timeout=60.0) as scp:
                 scp.get(remote_path, local_path)
 
             print(f"\n  ✓ [PROTOCOL: SCP] Download finished.")
@@ -385,6 +387,8 @@ def fast_download(ssh_conn, sftp_conn, remote_path, local_path, progress_callbac
         except ImportError:
             print("  [INFO] Python 'scp' module not available. Falling back to SFTP...")
         except Exception as e:
+            if isinstance(e, (InterruptedError, KeyboardInterrupt)) or (cancel_check and cancel_check()):
+                raise
             print(f"  [WARNING] SCP failed ({e}). Falling back to SFTP (prefetch mode)...")
 
     print(f"\n  ⬇ [PROTOCOL: SFTP] Downloading {os.path.basename(remote_path)} ({file_size/(1024*1024):.1f} MB) via SFTP prefetch...")
@@ -689,6 +693,7 @@ def load_config_from_json(config_path):
     source = json_config.get('source_server', {})
     config.SOURCE_SERVER = source.get('host', config.SOURCE_SERVER)
     config.SOURCE_USER = source.get('username', config.SOURCE_USER)
+    config.SOURCE_PORT = source.get('port', getattr(config, 'SOURCE_PORT', 22))
     config.SOURCE_PASSWORD = os.getenv('SOURCE_SERVER_PASSWORD', source.get('password', ''))
     config.SOURCE_SWITCH_USER = source.get('switch_user', config.SOURCE_SWITCH_USER)
     
@@ -723,8 +728,8 @@ def load_config_from_json(config_path):
     
     # Transfer optimization
     transfer_opt = json_config.get('transfer_optimization', {})
-    config.USE_SCP = transfer_opt.get('protocol', 'SFTP').upper() == 'SCP' and transfer_opt.get('enabled', False)
-    config.PARALLEL_DOWNLOADS = transfer_opt.get('parallel_downloads', False)
+    config.USE_SCP = transfer_opt.get('protocol', 'SFTP').upper() == 'SCP' and transfer_opt.get('enabled', True)
+    config.PARALLEL_DOWNLOADS = transfer_opt.get('parallel_downloads', True)
     config.MAX_THREADS = transfer_opt.get('max_threads', 4)
     config.DIRECT_WAR_DOWNLOAD = transfer_opt.get('direct_war_download', True)
     
