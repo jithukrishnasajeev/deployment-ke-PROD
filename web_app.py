@@ -12,7 +12,7 @@ import queue
 from datetime import datetime
 from dotenv import load_dotenv
 import time
-from scp import SCPClient
+# scp imported inside try/except below to handle missing package gracefully
 from deployment_automation import (
     DeploymentConfig, SSHClient, calculate_local_md5, 
     get_remote_md5, load_config_from_json
@@ -20,16 +20,15 @@ from deployment_automation import (
 import sys
 import subprocess
 
-# Force install the scp module if it is missing
-try:
-    import scp
-except ImportError:
-    print("SCP module missing. Installing it now...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "scp"])
-    import scp
-
 # Load environment variables
 load_dotenv()
+
+# SCP is optional — import only if already installed; auto-install fallback below
+try:
+    from scp import SCPClient
+except ImportError:
+    print("SCP module missing.")
+
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'iflight-deployment-secret-key'
@@ -276,7 +275,7 @@ def broadcast_message(msg_type, data):
     for q in clients:
         try:
             q.put_nowait(message)
-        except:
+        except Exception:
             dead_clients.append(q)
     for q in dead_clients:
         clients.remove(q)
@@ -831,10 +830,10 @@ def deploy_step3(config, selected_wars):
             if deploy_folder:
                 target_dir = f"{config.TARGET_DEPLOY_BASE}/{deploy_folder}/{config.VERSION}/War"
                 log_message(f"  📁 Creating {deploy_folder}...", 'info')
-                ssh.exec_command(f"mkdir -p {target_dir}")
+                ssh.exec_command(f"mkdir -p '{target_dir}'")
                 
                 log_message(f"  📋 Copying to deployment folder...", 'info')
-                ssh.exec_command(f"cp {source_war} {target_dir}/")
+                ssh.exec_command(f"cp '{source_war}' '{target_dir}/'")
                 
                 # Verify final deployed size
                 final_war = f"{target_dir}/{war_file}"
@@ -1021,7 +1020,9 @@ def get_config():
             'target_username': primary_route.get('username', config.TARGET_USER),
             'local_path': config.LOCAL_DOWNLOAD_PATH,
             'war_files': [prefix for prefix, _ in config.WAR_MAPPINGS],
-            'total_routes': len(target_routes)
+            'total_routes': len(target_routes),
+            'parallel_downloads': getattr(config, 'PARALLEL_DOWNLOADS', False),
+            'max_threads': getattr(config, 'MAX_THREADS', 4)
         })
         response.headers['Cache-Control'] = 'no-store'
         return response
@@ -1259,6 +1260,13 @@ def start_deployment():
         else:
             log_message(f"✓ Using default version: {config.VERSION}", 'info')
         
+        # Apply download mode override sent from UI toggle
+        parallel_downloads = data.get('parallel_downloads', None)
+        if parallel_downloads is not None:
+            config.PARALLEL_DOWNLOADS = bool(parallel_downloads)
+            mode_label = 'Parallel multi-thread' if config.PARALLEL_DOWNLOADS else 'Sequential single-session'
+            log_message(f"✓ Download mode: {mode_label}", 'info')
+
         # Update target server details if provided
         if target_server:
             config.TARGET_SERVER = target_server

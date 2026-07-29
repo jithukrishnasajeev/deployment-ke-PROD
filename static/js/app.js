@@ -111,6 +111,12 @@ async function loadConfiguration() {
         
         document.getElementById('local-path').value = data.local_path;
         
+        // Set parallel download checkbox state
+        const parallelDownloadEl = document.getElementById('parallel-download');
+        if (parallelDownloadEl && data.parallel_downloads !== undefined) {
+            parallelDownloadEl.checked = !!data.parallel_downloads;
+        }
+        
         // Load WAR files list
         loadWarFilesList(data.war_files);
         
@@ -380,6 +386,8 @@ function getSelectedWars() {
 // Execute deployment with given parameters
 async function executeDeployment(selectedWars, steps, version) {
     const bypassNetwork = document.getElementById('bypass-network').checked;
+    const parallelDownloadEl = document.getElementById('parallel-download');
+    const parallelDownload = parallelDownloadEl ? parallelDownloadEl.checked : false;
     const targetServer = document.getElementById('target-server').value.trim();
     const targetUsername = document.getElementById('target-username').value.trim();
     
@@ -439,7 +447,8 @@ async function executeDeployment(selectedWars, steps, version) {
                 version: version,
                 target_server: targetServer,
                 target_username: targetUsername,
-                bypass_network: bypassNetwork
+                bypass_network: bypassNetwork,
+                parallel_downloads: parallelDownload
             })
         });
         
