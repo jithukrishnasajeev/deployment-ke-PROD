@@ -355,10 +355,10 @@ def format_size_human(size_bytes):
 
 
 def deploy_step1(config, selected_wars):
-    """Step 1: High-Speed Direct WAR download using a single SSH connection"""
+    """Step 1: Download WAR files to Local machine (supports Parallel and Sequential modes)"""
     try:
         log_message("═" * 50, 'info')
-        log_message("STEP 1: Single SSH Session High-Speed Download to Local", 'success')
+        log_message("STEP 1: High-Speed Download to Local", 'success')
         log_message("═" * 50, 'info')
         
         os.makedirs(config.LOCAL_DOWNLOAD_PATH, exist_ok=True)
@@ -368,58 +368,70 @@ def deploy_step1(config, selected_wars):
         deployment_state['file_sizes'] = {}
         
         direct_war = getattr(config, 'DIRECT_WAR_DOWNLOAD', True)
+        parallel = getattr(config, 'PARALLEL_DOWNLOADS', False)
+        max_workers = getattr(config, 'MAX_THREADS', 4) if parallel else 1
+        use_scp = getattr(config, 'USE_SCP', True)
+        
         if direct_war:
             log_message("🚀 Direct WAR Download Enabled (skipping tar packaging overhead)", 'success')
         
-        log_message(f"🔗 Establishing single SSH connection to {config.SOURCE_SERVER}...", 'info')
-        ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, config.SOURCE_PASSWORD)
-        ssh.connect()
+        log_message(f"⚙ Download Mode: {'Parallel (' + str(max_workers) + ' worker threads)' if parallel and max_workers > 1 else 'Sequential single SSH session'}", 'info')
         
-        completed_count = 0
+        completed_count = [0]
         errors = []
-        
-        try:
-            for idx, war_prefix in enumerate(selected_wars, 1):
-                if deployment_state.get('cancelled'):
-                    log_message("⚠ Deployment cancelled by user", 'warning')
-                    break
+        download_lock = threading.Lock()
+        source_wars_dir = f"{config.SOURCE_PATH}Wars"
+
+        def download_one_war(item):
+            idx, war_prefix = item
+            if deployment_state.get('cancelled'):
+                return False
                 
-                war_file = f"{war_prefix}-{config.VERSION}.war"
-                tar_file = f"{war_prefix}-{config.VERSION}.tar"
-                war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
-                
-                log_message(f"[{idx}/{len(selected_wars)}] {war_name}", 'info')
+            war_file = f"{war_prefix}-{config.VERSION}.war"
+            tar_file = f"{war_prefix}-{config.VERSION}.tar"
+            war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
+            
+            with download_lock:
+                log_message(f"[{idx}/{len(selected_wars)}] Downloading: {war_name}", 'info')
                 update_file_size(war_prefix, war_name, status='processing')
-                
-                source_wars_dir = f"{config.SOURCE_PATH}Wars"
+            
+            source_port = getattr(config, 'SOURCE_PORT', 22)
+            ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, config.SOURCE_PASSWORD, source_port)
+            ssh.connect()
+            
+            try:
                 remote_war = f"{source_wars_dir}/{war_file}"
-                
                 source_war_size = get_remote_file_size(ssh, remote_war)
-                update_file_size(war_prefix, war_name, source_size=source_war_size)
-                log_message(f"  📦 {war_name}: Source WAR {format_size(source_war_size)}", 'info')
                 
-                use_scp = getattr(config, 'USE_SCP', True)
+                with download_lock:
+                    update_file_size(war_prefix, war_name, source_size=source_war_size)
+                    log_message(f"  📦 {war_name}: Source WAR {format_size(source_war_size)}", 'info')
                 
                 if direct_war:
                     local_war = os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file)
                     local_md5 = sftp_download_optimized(ssh, remote_war, local_war, war_prefix, war_name, use_scp)
                     
-                    log_message(f"  🔐 {war_name}: Verifying MD5...", 'info')
+                    with download_lock:
+                        log_message(f"  🔐 {war_name}: Verifying MD5...", 'info')
+                    
                     remote_md5 = get_remote_md5(ssh, remote_war)
                     if local_md5 is None:
                         local_md5 = calculate_local_md5(local_war)
                     
-                    if remote_md5 and local_md5 == remote_md5:
-                        log_message(f"  ✓ {war_name}: Integrity verified", 'success')
-                        update_file_size(war_prefix, war_name, status='downloaded')
-                    else:
-                        log_message(f"  ⚠ {war_name}: Checksum mismatch!", 'warning')
-                        update_file_size(war_prefix, war_name, status='warning')
+                    with download_lock:
+                        if remote_md5 and local_md5 == remote_md5:
+                            log_message(f"  ✓ {war_name}: Integrity verified", 'success')
+                            update_file_size(war_prefix, war_name, status='downloaded')
+                        else:
+                            log_message(f"  ⚠ {war_name}: Checksum mismatch!", 'warning')
+                            update_file_size(war_prefix, war_name, status='warning')
                 else:
-                    remote_tar = f"/tmp/{tar_file}"
+                    remote_tar = f"/tmp/{tar_file}_{threading.current_thread().ident}"
                     local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
                     
-                    log_message(f"  ⚙ {war_name}: Packaging tar...", 'info')
+                    with download_lock:
+                        log_message(f"  ⚙ {war_name}: Packaging tar...", 'info')
+                    
                     stdin, stdout, stderr = ssh.exec_command(
                         f"cd '{source_wars_dir}' && tar -cf '{remote_tar}' '{war_file}'"
                     )
@@ -432,22 +444,49 @@ def deploy_step1(config, selected_wars):
                     if local_md5 is None:
                         local_md5 = calculate_local_md5(local_tar)
                     
-                    if remote_md5 and local_md5 == remote_md5:
-                        log_message(f"  ✓ {war_name}: Integrity verified", 'success')
-                        update_file_size(war_prefix, war_name, status='downloaded')
-                    else:
-                        log_message(f"  ⚠ {war_name}: Checksum mismatch!", 'warning')
-                        update_file_size(war_prefix, war_name, status='warning')
+                    with download_lock:
+                        if remote_md5 and local_md5 == remote_md5:
+                            log_message(f"  ✓ {war_name}: Integrity verified", 'success')
+                            update_file_size(war_prefix, war_name, status='downloaded')
+                        else:
+                            log_message(f"  ⚠ {war_name}: Checksum mismatch!", 'warning')
+                            update_file_size(war_prefix, war_name, status='warning')
                 
-                completed_count += 1
-                deployment_state['completed_files'] = completed_count
-                update_progress(completed_count / len(selected_wars) * 100, war_name)
-        finally:
-            ssh.close()
-        
+                with download_lock:
+                    completed_count[0] += 1
+                    deployment_state['completed_files'] = completed_count[0]
+                    update_progress(completed_count[0] / len(selected_wars) * 100, war_name)
+                
+                return True
+            except Exception as e:
+                with download_lock:
+                    errors.append(f"{war_prefix}: {str(e)}")
+                    log_message(f"  ✗ {war_prefix} download failed: {str(e)}", 'error')
+                    update_file_size(war_prefix, war_name, status='error')
+                return False
+            finally:
+                ssh.close()
+
+        if parallel and max_workers > 1:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                items = list(enumerate(selected_wars, 1))
+                futures = {executor.submit(download_one_war, item): item[1] for item in items}
+                for future in as_completed(futures):
+                    if deployment_state.get('cancelled'):
+                        log_message("⚠ Deployment cancelled", 'warning')
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        break
+        else:
+            for idx, war_prefix in enumerate(selected_wars, 1):
+                if deployment_state.get('cancelled'):
+                    log_message("⚠ Deployment cancelled by user", 'warning')
+                    break
+                download_one_war((idx, war_prefix))
+
         log_message("═" * 50, 'info')
         log_message("✓ STEP 1 COMPLETED!", 'success')
-        log_message(f"📊 Downloaded {completed_count}/{len(selected_wars)} files", 'info')
+        log_message(f"📊 Downloaded {completed_count[0]}/{len(selected_wars)} files", 'info')
         return len(errors) == 0
         
     except Exception as e:
