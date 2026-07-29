@@ -111,10 +111,15 @@ async function loadConfiguration() {
         
         document.getElementById('local-path').value = data.local_path;
         
-        // Set parallel download checkbox state
+        // Set parallel download checkbox state & threads count
         const parallelDownloadEl = document.getElementById('parallel-download');
+        const parallelThreadsEl = document.getElementById('parallel-threads');
         if (parallelDownloadEl && data.parallel_downloads !== undefined) {
             parallelDownloadEl.checked = !!data.parallel_downloads;
+            toggleParallelThreads(parallelDownloadEl.checked);
+        }
+        if (parallelThreadsEl && data.max_threads) {
+            parallelThreadsEl.value = String(data.max_threads);
         }
         
         // Load WAR files list
@@ -388,6 +393,8 @@ async function executeDeployment(selectedWars, steps, version) {
     const bypassNetwork = document.getElementById('bypass-network').checked;
     const parallelDownloadEl = document.getElementById('parallel-download');
     const parallelDownload = parallelDownloadEl ? parallelDownloadEl.checked : false;
+    const parallelThreadsEl = document.getElementById('parallel-threads');
+    const maxThreads = parallelThreadsEl ? (parseInt(parallelThreadsEl.value, 10) || 4) : 4;
     const targetServer = document.getElementById('target-server').value.trim();
     const targetUsername = document.getElementById('target-username').value.trim();
     
@@ -448,7 +455,8 @@ async function executeDeployment(selectedWars, steps, version) {
                 target_server: targetServer,
                 target_username: targetUsername,
                 bypass_network: bypassNetwork,
-                parallel_downloads: parallelDownload
+                parallel_downloads: parallelDownload,
+                max_threads: maxThreads
             })
         });
         
@@ -1568,5 +1576,13 @@ async function savePasswords() {
     } catch (error) {
         console.error('Failed to save passwords:', error);
         showConfigNotification('Failed to save passwords: ' + error.message, 'error');
+    }
+}
+
+// Toggle visibility of parallel thread count dropdown
+function toggleParallelThreads(checked) {
+    const container = document.getElementById('parallel-threads-container');
+    if (container) {
+        container.style.display = checked ? 'inline-flex' : 'none';
     }
 }

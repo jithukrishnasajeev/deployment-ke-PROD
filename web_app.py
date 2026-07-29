@@ -1264,8 +1264,18 @@ def start_deployment():
         parallel_downloads = data.get('parallel_downloads', None)
         if parallel_downloads is not None:
             config.PARALLEL_DOWNLOADS = bool(parallel_downloads)
-            mode_label = 'Parallel multi-thread' if config.PARALLEL_DOWNLOADS else 'Sequential single-session'
-            log_message(f"✓ Download mode: {mode_label}", 'info')
+            
+        max_threads = data.get('max_threads', None)
+        if max_threads is not None:
+            try:
+                config.MAX_THREADS = max(1, int(max_threads))
+            except (ValueError, TypeError):
+                pass
+
+        if config.PARALLEL_DOWNLOADS:
+            log_message(f"✓ Download mode: Parallel multi-thread ({config.MAX_THREADS} threads)", 'info')
+        else:
+            log_message("✓ Download mode: Sequential single-session", 'info')
 
         # Update target server details if provided
         if target_server:

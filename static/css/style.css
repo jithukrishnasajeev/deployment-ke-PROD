@@ -4117,3 +4117,71 @@ body.config-fullscreen-mode .column-left {
         padding: 16px 24px;
     }
 }
+
+/* ================================================
+   DOWNLOAD MODE & PARALLEL THREADS SELECTOR UI
+   ================================================ */
+.download-mode-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.parallel-threads-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(14, 165, 233, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #e0f2fe;
+    backdrop-filter: blur(8px);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+    animation: fadeInSlide 0.25s ease-out;
+}
+
+@keyframes fadeInSlide {
+    from {
+        opacity: 0;
+        transform: translateX(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.parallel-threads-badge:hover {
+    border-color: rgba(56, 189, 248, 0.6);
+    box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+}
+
+.threads-select {
+    background: rgba(15, 23, 42, 0.85);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.threads-select:focus,
+.threads-select:hover {
+    border-color: #38bdf8;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.threads-select option {
+    background: #0f172a;
+    color: #e0f2fe;
+}
