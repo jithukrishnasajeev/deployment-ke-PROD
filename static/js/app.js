@@ -581,11 +581,23 @@ async function cancelDeployment() {
         return;
     }
     
+    const cancelBtn = document.getElementById('cancel-btn');
+    if (cancelBtn) {
+        cancelBtn.disabled = true;
+        const textSpan = cancelBtn.querySelector('span');
+        if (textSpan) textSpan.textContent = 'Cancelling...';
+    }
+    
     try {
         await fetch('/api/cancel', { method: 'POST' });
         addLog('warning', 'Cancellation requested...');
     } catch (error) {
         addLog('error', 'Failed to cancel: ' + error.message);
+        if (cancelBtn) {
+            cancelBtn.disabled = false;
+            const textSpan = cancelBtn.querySelector('span');
+            if (textSpan) textSpan.textContent = 'Cancel';
+        }
     }
 }
 
@@ -643,11 +655,26 @@ async function retryFailed() {
     }
 }
 
-// Enable/disable all deployment buttons
+// Enable/disable all deployment buttons and smartly toggle Cancel button
 function setButtonsDisabled(disabled) {
-    document.getElementById('deploy-btn').disabled = disabled;
-    document.getElementById('step1-btn').disabled = disabled;
-    document.getElementById('step2-btn').disabled = disabled;
+    const deployBtn = document.getElementById('deploy-btn');
+    const step1Btn = document.getElementById('step1-btn');
+    const step2Btn = document.getElementById('step2-btn');
+    const step3Btn = document.getElementById('step3-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+    
+    if (deployBtn) deployBtn.disabled = disabled;
+    if (step1Btn) step1Btn.disabled = disabled;
+    if (step2Btn) step2Btn.disabled = disabled;
+    if (step3Btn) step3Btn.disabled = disabled;
+    
+    // Smartly show Cancel button ONLY during active action/deployment
+    if (cancelBtn) {
+        cancelBtn.disabled = false;
+        const textSpan = cancelBtn.querySelector('span');
+        if (textSpan) textSpan.textContent = 'Cancel';
+        cancelBtn.style.display = disabled ? 'inline-flex' : 'none';
+    }
 }
 
 // Handle deployment completion
