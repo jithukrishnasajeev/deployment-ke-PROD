@@ -171,7 +171,9 @@ class SSHClient:
                     except Exception:
                         pass
 
-        raise last_error
+        if last_error:
+            raise last_error
+        raise Exception(f"Failed to connect to {self.hostname}")
     
     def execute_command(self, command, sudo_password=None, timeout=300):
         """Execute a command on remote server using transport session"""
