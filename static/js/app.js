@@ -48,6 +48,9 @@ function handleMessage(message) {
         case 'progress':
             updateProgress(message.data.progress, message.data.current_file, 
                           message.data.completed, message.data.total);
+            if (message.data.file_sizes) {
+                updateFileSizes(message.data.file_sizes);
+            }
             break;
         case 'file_size':
             updateFileSizes(message.data);
@@ -887,10 +890,14 @@ function updateFileSizes(sizes) {
         
         // Show transfer progress if actively downloading/uploading
         let progressBar = '';
-        if ((info.status === 'downloading' || info.status === 'uploading' || info.status === 'extracting') && info.transfer_progress !== undefined) {
-            const percent = Math.min(100, Math.max(0, info.transfer_progress)).toFixed(1);
-            const transferred = info.transferred ? formatSize(info.transferred) : '0 B';
-            const total = info.total_size ? formatSize(info.total_size) : '0 B';
+        const isDownloading = (info.status === 'downloading' || info.status === 'processing' || info.status === 'uploading' || info.status === 'extracting');
+        if (isDownloading) {
+            const totalBytes = info.total_size || info.source_size || 0;
+            const transferredBytes = info.transferred || 0;
+            const calcPercent = totalBytes > 0 ? (transferredBytes / totalBytes * 100) : (info.transfer_progress || 0);
+            const percent = Math.min(100, Math.max(0, calcPercent)).toFixed(1);
+            const transferred = formatSize(transferredBytes);
+            const total = totalBytes > 0 ? formatSize(totalBytes) : 'Calculating...';
             progressBar = `
                 <div class="file-card-progress">
                     <div class="transfer-progress">

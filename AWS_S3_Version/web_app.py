@@ -331,7 +331,7 @@ def update_progress(progress, current_file=None):
     })
 
 
-def update_file_size(war_prefix, war_name, source_size=None, target_size=None, status=None):
+def update_file_size(war_prefix, war_name, source_size=None, target_size=None, status=None, total_size=None, transferred=None, transfer_progress=None):
     """Update and broadcast file size info"""
     if war_prefix not in deployment_state['file_sizes']:
         deployment_state['file_sizes'][war_prefix] = {
@@ -347,6 +347,12 @@ def update_file_size(war_prefix, war_name, source_size=None, target_size=None, s
         deployment_state['file_sizes'][war_prefix]['target_size'] = target_size
     if status is not None:
         deployment_state['file_sizes'][war_prefix]['status'] = status
+    if total_size is not None:
+        deployment_state['file_sizes'][war_prefix]['total_size'] = total_size
+    if transferred is not None:
+        deployment_state['file_sizes'][war_prefix]['transferred'] = transferred
+    if transfer_progress is not None:
+        deployment_state['file_sizes'][war_prefix]['transfer_progress'] = transfer_progress
     
     broadcast_message('file_size', deployment_state['file_sizes'])
 
@@ -437,7 +443,7 @@ def deploy_step1(config, selected_wars):
                 
                 with download_lock:
                     log_message(f"[{idx}/{len(selected_wars)}] Downloading from S3: {war_name}", 'info')
-                    update_file_size(war_prefix, war_name, status='processing')
+                    update_file_size(war_prefix, war_name, status='downloading')
                 
                 s3_uri = f"s3://{bucket}/{s3_prefix}{war_file}"
                 local_war = os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file)
@@ -446,7 +452,7 @@ def deploy_step1(config, selected_wars):
                     s3_total_size = get_s3_file_size(s3_uri, profile)
                     if s3_total_size > 0:
                         with download_lock:
-                            update_file_size(war_prefix, war_name, source_size=s3_total_size, status='downloading')
+                            update_file_size(war_prefix, war_name, source_size=s3_total_size, total_size=s3_total_size, status='downloading')
                             log_message(f"  📦 {war_name}: S3 WAR {format_size(s3_total_size)}", 'info')
                     
                     aws_bin = get_aws_cmd()
@@ -460,26 +466,18 @@ def deploy_step1(config, selected_wars):
                             break
                         if os.path.exists(local_war):
                             current_bytes = os.path.getsize(local_war)
-                            percent = (current_bytes / s3_total_size * 100) if s3_total_size > 0 else 50
+                            tot = s3_total_size if s3_total_size > 0 else current_bytes
+                            percent = (current_bytes / tot * 100) if tot > 0 else 50
                             with download_lock:
-                                if war_prefix not in deployment_state['file_sizes']:
-                                    deployment_state['file_sizes'][war_prefix] = {
-                                        'name': war_name,
-                                        'source_size': s3_total_size,
-                                        'target_size': 0,
-                                        'status': 'downloading',
-                                        'transfer_progress': percent,
-                                        'transferred': current_bytes
-                                    }
-                                else:
-                                    deployment_state['file_sizes'][war_prefix].update({
-                                        'source_size': s3_total_size if s3_total_size > 0 else current_bytes,
-                                        'transfer_progress': percent,
-                                        'transferred': current_bytes,
-                                        'status': 'downloading'
-                                    })
-                                broadcast_message('file_size', deployment_state['file_sizes'])
-                        time.sleep(0.5)
+                                update_file_size(
+                                    war_prefix, war_name,
+                                    source_size=tot,
+                                    total_size=tot,
+                                    transferred=current_bytes,
+                                    transfer_progress=percent,
+                                    status='downloading'
+                                )
+                        time.sleep(0.3)
                     
                     stdout, stderr = proc.communicate()
                     if proc.returncode != 0:
@@ -489,14 +487,15 @@ def deploy_step1(config, selected_wars):
                     local_md5 = calculate_local_md5(local_war)
                     
                     with download_lock:
-                        update_file_size(war_prefix, war_name, source_size=local_size, target_size=local_size, status='downloaded')
-                        if war_prefix in deployment_state['file_sizes']:
-                            deployment_state['file_sizes'][war_prefix].update({
-                                'transfer_progress': 100,
-                                'transferred': local_size,
-                                'status': 'downloaded'
-                            })
-                            broadcast_message('file_size', deployment_state['file_sizes'])
+                        update_file_size(
+                            war_prefix, war_name,
+                            source_size=local_size,
+                            target_size=local_size,
+                            total_size=local_size,
+                            transferred=local_size,
+                            transfer_progress=100,
+                            status='downloaded'
+                        )
                         log_message(f"  ✓ {war_name}: Downloaded & Verified {format_size(local_size)} from S3", 'success')
                         completed_count[0] += 1
                         deployment_state['completed_files'] = completed_count[0]
