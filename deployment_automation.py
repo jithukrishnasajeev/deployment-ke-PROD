@@ -692,7 +692,7 @@ def load_config_from_json(config_path):
     # Transfer optimization
     transfer_opt = json_config.get('transfer_optimization', {})
     config.USE_SCP = transfer_opt.get('protocol', 'SFTP').upper() == 'SCP' and transfer_opt.get('enabled', False)
-    config.PARALLEL_DOWNLOADS = transfer_opt.get('parallel_downloads', True)
+    config.PARALLEL_DOWNLOADS = transfer_opt.get('parallel_downloads', False)
     config.MAX_THREADS = transfer_opt.get('max_threads', 4)
     config.DIRECT_WAR_DOWNLOAD = transfer_opt.get('direct_war_download', True)
     
