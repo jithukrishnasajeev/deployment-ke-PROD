@@ -29,7 +29,7 @@ class DeploymentConfig:
     SOURCE_SERVER = "10.246.26.148"
     SOURCE_USER = "your_username"  # Replace with actual username
     SOURCE_SWITCH_USER = "iflight_user"
-    SOURCE_PASSWORD = ""
+    SOURCE_PASSWORD = os.getenv('SOURCE_SERVER_PASSWORD', '')
     
     # Build path and version
     VERSION = "3.96.34.244"
@@ -47,7 +47,7 @@ class DeploymentConfig:
     # Step 2: Target Server (via SFTP proxy)
     TARGET_SERVER = "10.175.1.247"
     TARGET_USER = "a-10266@ibsplc.com%iflightkeprod%10.175.1.247"
-    TARGET_PASSWORD = ""
+    TARGET_PASSWORD = os.getenv('TARGET_SERVER_PASSWORD', '')
     TARGET_ROUTES = []
     
     # Target paths
@@ -717,12 +717,11 @@ def interactive_mode(config_path=None):
     if config_path and os.path.exists(config_path):
         print(f"[INFO] Loading configuration from {config_path}")
         config = load_config_from_json(config_path)
-        source_password = getattr(config, 'SOURCE_PASSWORD', '')
-        target_password = getattr(config, 'TARGET_PASSWORD', '')
     else:
         config = DeploymentConfig()
-        source_password = ''
-        target_password = ''
+        
+    source_password = getattr(config, 'SOURCE_PASSWORD', '') or os.getenv('SOURCE_SERVER_PASSWORD', '')
+    target_password = getattr(config, 'TARGET_PASSWORD', '') or os.getenv('TARGET_SERVER_PASSWORD', '')
     
     print("\n" + "="*60)
     print("iFlight Neo Wars Deployment Automation")
@@ -744,6 +743,8 @@ def interactive_mode(config_path=None):
         if source_user:
             config.SOURCE_USER = source_user
         source_password = getpass.getpass("Source server password: ")
+    else:
+        config.SOURCE_PASSWORD = source_password
     
     if not target_password:
         print("\n--- Step 2 Credentials (Target Server) ---")
@@ -751,6 +752,8 @@ def interactive_mode(config_path=None):
         if target_user:
             config.TARGET_USER = target_user
         target_password = getpass.getpass("Target server password: ")
+    else:
+        config.TARGET_PASSWORD = target_password
     
     print("\n" + "-"*60)
     print("Configuration Summary:")
