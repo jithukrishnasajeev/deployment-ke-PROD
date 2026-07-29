@@ -1321,6 +1321,42 @@ def aws_sso_login():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/check-aws-sso', methods=['POST'])
+def check_aws_sso():
+    """Check if AWS SSO session is active, auto-launch login if expired"""
+    try:
+        data = request.json or {}
+        config_path = os.path.join(os.path.dirname(__file__), 'deployment_config.json')
+        config = load_config_from_json(config_path)
+        profile = data.get('profile', getattr(config, 'S3_PROFILE', 'iFlightCrew_Dev'))
+        
+        aws_bin = get_aws_cmd()
+        cmd = [aws_bin, "sts", "get-caller-identity", "--profile", profile]
+        
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
+            if proc.returncode == 0:
+                log_message(f"✅ AWS SSO Session is ACTIVE for profile '{profile}'", 'success')
+                return jsonify({'active': True, 'profile': profile})
+            else:
+                log_message(f"⚠️ AWS SSO session expired or unauthenticated for profile '{profile}' - auto launching SSO login...", 'warning')
+                subprocess.Popen(f'start "AWS SSO Login ({profile})" cmd /c "{aws_bin} sso login --profile {profile} && echo SSO Login Successful! Press any key to exit. && pause"', shell=True)
+                return jsonify({
+                    'active': False,
+                    'profile': profile,
+                    'initiated_login': True,
+                    'message': f"SSO Session expired. Auto-launched AWS SSO Login for profile '{profile}'."
+                })
+        except subprocess.TimeoutExpired:
+            log_message(f"⚠️ AWS STS status check timed out for profile '{profile}' - auto launching SSO login...", 'warning')
+            subprocess.Popen(f'start "AWS SSO Login ({profile})" cmd /c "{aws_bin} sso login --profile {profile} && echo SSO Login Successful! Press any key to exit. && pause"', shell=True)
+            return jsonify({'active': False, 'profile': profile, 'initiated_login': True, 'message': 'SSO Login launched due to timeout.'})
+            
+    except Exception as e:
+        log_message(f"✗ AWS SSO check failed: {str(e)}", 'error')
+        return jsonify({'active': False, 'error': str(e)}), 500
+
+
 @app.route('/api/config/reset', methods=['POST'])
 def reset_config():
     """Reset configuration to defaults"""

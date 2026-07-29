@@ -71,7 +71,7 @@ function handleMessage(message) {
 
 let currentDownloadSource = 'ssh';
 
-function setDownloadSource(source) {
+function setDownloadSource(source, isUserAction = false) {
     currentDownloadSource = source;
     const sshPill = document.getElementById('src-pill-ssh');
     const s3Pill = document.getElementById('src-pill-s3');
@@ -83,11 +83,39 @@ function setDownloadSource(source) {
         if (s3Pill) s3Pill.classList.add('active');
         if (sshContainer) sshContainer.style.display = 'none';
         if (s3Container) s3Container.style.display = 'block';
+        
+        if (isUserAction) {
+            checkAndAutoLoginAwsSso();
+        }
     } else {
         if (s3Pill) s3Pill.classList.remove('active');
         if (sshPill) sshPill.classList.add('active');
         if (s3Container) s3Container.style.display = 'none';
         if (sshContainer) sshContainer.style.display = 'block';
+    }
+}
+
+async function checkAndAutoLoginAwsSso() {
+    const profile = document.getElementById('cfg-s3-profile')?.value?.trim() || 'iFlightCrew_Dev';
+    addLog('info', `🔐 Verifying AWS SSO login status for profile '${profile}'...`);
+    try {
+        const response = await fetch('/api/check-aws-sso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profile: profile })
+        });
+        const data = await response.json();
+        if (data.active) {
+            addLog('success', `✅ AWS SSO Session is ACTIVE for profile '${profile}'! Ready to download.`);
+        } else if (data.initiated_login) {
+            addLog('warning', `🔑 AWS SSO session expired or unauthenticated. Launched browser login window for profile '${profile}'.`);
+        } else if (data.error) {
+            addLog('error', `❌ AWS SSO status check error: ${data.error}`);
+            triggerAwsSsoLogin();
+        }
+    } catch (e) {
+        addLog('error', '❌ Could not verify AWS SSO status: ' + e.message);
+        triggerAwsSsoLogin();
     }
 }
 
