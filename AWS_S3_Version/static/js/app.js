@@ -3,6 +3,8 @@ let eventSource = null;
 let config = null;
 let isDeploying = false;
 let fileSizes = {};
+let fileSizesUpdateTimeout = null;
+let pendingFileSizes = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -48,12 +50,16 @@ function handleMessage(message) {
         case 'progress':
             updateProgress(message.data.progress, message.data.current_file, 
                           message.data.completed, message.data.total);
-            if (message.data.file_sizes) {
-                updateFileSizes(message.data.file_sizes);
-            }
             break;
         case 'file_size':
-            updateFileSizes(message.data);
+            pendingFileSizes = message.data;
+            if (!fileSizesUpdateTimeout) {
+                fileSizesUpdateTimeout = setTimeout(() => {
+                    updateFileSizes(pendingFileSizes);
+                    pendingFileSizes = null;
+                    fileSizesUpdateTimeout = null;
+                }, 100);
+            }
             break;
         case 'complete':
             handleDeploymentComplete(message.data);

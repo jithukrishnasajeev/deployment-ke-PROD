@@ -7,6 +7,7 @@ Real-time deployment with Server-Sent Events and File Size Tracking
 from flask import Flask, render_template, request, jsonify, Response
 import json
 import os
+import re
 import threading
 import queue
 from datetime import datetime
@@ -326,8 +327,7 @@ def update_progress(progress, current_file=None):
         'progress': progress,
         'current_file': current_file,
         'completed': deployment_state['completed_files'],
-        'total': deployment_state['total_files'],
-        'file_sizes': deployment_state['file_sizes']
+        'total': deployment_state['total_files']
     })
 
 
