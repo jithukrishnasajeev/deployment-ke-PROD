@@ -170,8 +170,9 @@ class SSHClient:
                         sock.close()
                     except Exception:
                         pass
-
-        raise last_error
+        if last_error is not None:
+            raise last_error
+        raise ConnectionError(f"Failed to connect to {self.hostname}:{self.port} after {max_retries} retries")
     
     def execute_command(self, command, sudo_password=None, timeout=300):
         """Execute a command on remote server using transport session"""
