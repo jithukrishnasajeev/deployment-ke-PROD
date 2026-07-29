@@ -142,7 +142,7 @@ def fast_sftp_download(sftp, remote_path, local_path, war_prefix, war_name, call
     return md5_hash.hexdigest()
 
 
-def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, use_scp=False):
+def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, use_scp=True):
     """Optimized upload with SCP or SFTP based on config"""
     file_size = os.path.getsize(local_path)
     
@@ -207,7 +207,7 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
     log_message(f"  ✓ Uploaded in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
 
 
-def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, use_scp=False):
+def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, use_scp=True):
     """Optimized download using prefetch + streaming MD5 (SCP fallback available)"""
     
     # Get file size for progress tracking
@@ -394,7 +394,7 @@ def deploy_step1(config, selected_wars):
                 update_file_size(war_prefix, war_name, source_size=source_war_size)
                 log_message(f"  📦 {war_name}: Source WAR {format_size(source_war_size)}", 'info')
                 
-                use_scp = getattr(config, 'USE_SCP', False)
+                use_scp = getattr(config, 'USE_SCP', True)
                 
                 if direct_war:
                     local_war = os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file)
@@ -623,7 +623,7 @@ def deploy_step2(config, selected_wars):
                         log_message(f"  ✗ Route {route_idx} ({pam_host}) unreachable — blacklisted for this run", 'warning')
                     raise
                 
-                use_scp = getattr(config, 'USE_SCP', False)
+                use_scp = getattr(config, 'USE_SCP', True)
                 ssh.exec_command(f"mkdir -p '{config.TARGET_EXTRACT_PATH}'")
                 
                 if filename.endswith('.war'):

@@ -58,7 +58,7 @@ class DeploymentConfig:
     PARALLEL_DOWNLOADS = False  # Single SSH session by default; set True for multi-thread parallel
     MAX_THREADS = 4
     DIRECT_WAR_DOWNLOAD = True
-    USE_SCP = False
+    USE_SCP = True
     
     # WAR file mappings: (war_file_prefix, deployment_folder)
     WAR_MAPPINGS = [
@@ -331,36 +331,37 @@ class SFTPClient:
 
 
 def fast_sftp_download(sftp, remote_path, local_path, progress_callback=None, cancel_check=None):
-    """High-speed SFTP download using Paramiko sftp.get.
+    """High-speed SFTP download using prefetch + streaming MD5 (single-pass).
 
-    When cancel_check is provided the download runs in chunked mode so that
-    cancellation is checked every 1 MB.
+    Enables read-ahead prefetching so that SFTP pipelining is active even in chunked
+    or progress callback mode.
     Returns (md5_hex_digest, file_size_bytes).
     """
     file_size = sftp.stat(remote_path).st_size
+    md5_hash = hashlib.md5()
+    transferred = 0
+    chunk_size = 1048576  # 1 MB chunk size
 
-    if cancel_check:
-        # Chunked mode — checks cancellation every 1 MB
-        md5_hash = hashlib.md5()
-        transferred = 0
-        chunk_size = 1048576
-        with sftp.open(remote_path, 'rb') as remote_file:
-            with open(local_path, 'wb') as local_file:
-                while True:
-                    if cancel_check():
-                        raise InterruptedError("Download cancelled by caller")
-                    data = remote_file.read(chunk_size)
-                    if not data:
-                        break
-                    local_file.write(data)
-                    md5_hash.update(data)
-                    transferred += len(data)
-                    if progress_callback:
-                        progress_callback(transferred, file_size)
-        return md5_hash.hexdigest(), file_size
-    else:
-        sftp.get(remote_path, local_path, callback=progress_callback)
-        return calculate_local_md5(local_path), file_size
+    with sftp.open(remote_path, 'rb') as remote_file:
+        try:
+            remote_file.prefetch(file_size)
+        except Exception:
+            pass
+
+        with open(local_path, 'wb') as local_file:
+            while True:
+                if cancel_check and cancel_check():
+                    raise InterruptedError("Download cancelled by caller")
+                data = remote_file.read(chunk_size)
+                if not data:
+                    break
+                local_file.write(data)
+                md5_hash.update(data)
+                transferred += len(data)
+                if progress_callback:
+                    progress_callback(transferred, file_size)
+
+    return md5_hash.hexdigest(), file_size
 
 
 def calculate_local_md5(file_path):
