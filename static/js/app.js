@@ -1093,20 +1093,54 @@ function addLog(level, message, timestamp) {
     logsContainer.scrollTop = logsContainer.scrollHeight;
 }
 
-// Update progress bar with enhanced animations
+// Update progress bar with enhanced animations & telemetry state
 function updateProgress(progress, currentFile, completed, total) {
     const progressBar = document.getElementById('progress-bar');
     const progressText = document.getElementById('progress-text');
     const currentFileSpan = document.getElementById('current-file');
     const completedSpan = document.getElementById('completed-count');
     const totalSpan = document.getElementById('total-count');
-    const progressSection = document.querySelector('.progress-section');
+    const progressSection = document.querySelector('.progress-hero-card') || document.querySelector('.progress-section');
     
     const roundedProgress = Math.round(progress);
-    const oldProgress = parseInt(progressBar.style.width) || 0;
     
-    progressBar.style.width = roundedProgress + '%';
-    progressText.textContent = roundedProgress + '%';
+    if (progressBar) progressBar.style.width = roundedProgress + '%';
+    if (progressText) progressText.textContent = roundedProgress + '%';
+    
+    // Telemetry Badge & Pipeline Stepper Node Updates
+    const telemetryBadge = document.getElementById('telemetry-status-badge');
+    const telemetryText = document.getElementById('telemetry-status-text');
+    const s1 = document.getElementById('step-stage-1');
+    const s2 = document.getElementById('step-stage-2');
+    const s3 = document.getElementById('step-stage-3');
+
+    if (telemetryBadge) {
+        if (roundedProgress > 0 && roundedProgress < 100) {
+            telemetryBadge.className = 'telemetry-badge running';
+            if (telemetryText) telemetryText.textContent = 'Executing';
+        } else if (roundedProgress >= 100) {
+            telemetryBadge.className = 'telemetry-badge complete';
+            if (telemetryText) telemetryText.textContent = 'Completed';
+        } else {
+            telemetryBadge.className = 'telemetry-badge idle';
+            if (telemetryText) telemetryText.textContent = 'Standby';
+        }
+    }
+
+    // Stepper updates
+    if (s1 && s2 && s3) {
+        if (roundedProgress === 0) {
+            s1.className = 'step-item'; s2.className = 'step-item'; s3.className = 'step-item';
+        } else if (roundedProgress > 0 && roundedProgress <= 33) {
+            s1.className = 'step-item active'; s2.className = 'step-item'; s3.className = 'step-item';
+        } else if (roundedProgress > 33 && roundedProgress <= 75) {
+            s1.className = 'step-item complete'; s2.className = 'step-item active'; s3.className = 'step-item';
+        } else if (roundedProgress > 75 && roundedProgress < 100) {
+            s1.className = 'step-item complete'; s2.className = 'step-item complete'; s3.className = 'step-item active';
+        } else if (roundedProgress >= 100) {
+            s1.className = 'step-item complete'; s2.className = 'step-item complete'; s3.className = 'step-item complete';
+        }
+    }
     
     // Add/remove active class for animation
     if (progressSection) {
@@ -1121,8 +1155,7 @@ function updateProgress(progress, currentFile, completed, total) {
         }
     }
     
-    if (currentFile) {
-        // Animate file name change
+    if (currentFile && currentFileSpan) {
         if (currentFileSpan.textContent !== currentFile) {
             currentFileSpan.style.opacity = '0';
             setTimeout(() => {
@@ -1134,12 +1167,11 @@ function updateProgress(progress, currentFile, completed, total) {
     }
     
     if (completed !== undefined && total !== undefined) {
-        // Animate counter change
-        if (parseInt(completedSpan.textContent) !== completed) {
+        if (completedSpan && parseInt(completedSpan.textContent) !== completed) {
             completedSpan.classList.add('counter');
         }
-        completedSpan.textContent = completed;
-        totalSpan.textContent = total;
+        if (completedSpan) completedSpan.textContent = completed;
+        if (totalSpan) totalSpan.textContent = total;
     }
 }
 

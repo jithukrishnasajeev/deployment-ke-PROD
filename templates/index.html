@@ -557,78 +557,117 @@
         <div class="resize-handle" data-direction="right"></div>
 
         <!-- RIGHT COLUMN - File Status -->
+        <!-- RIGHT COLUMN - File Status & Telemetry -->
         <aside class="column column-right" data-column="right">
             <div class="column-header">
-                <i class="bi bi-speedometer2"></i>
-                <span>Progress & Status</span>
-            </div>
-
-            <!-- Progress Section -->
-            <div class="progress-section">
-                <div class="progress-header">
-                    <span class="progress-label">Deployment Progress</span>
-                    <span class="progress-value-display" id="progress-text">0%</span>
+                <div>
+                    <i class="bi bi-speedometer2"></i>
+                    <span>Progress & Telemetry</span>
                 </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-bg">
-                        <div class="progress-bar-fill" id="progress-bar" style="width: 0%"></div>
-                    </div>
-                </div>
-                <div class="progress-info">
-                    <div class="progress-info-item">
-                        <span class="info-label">Current:</span>
-                        <span class="info-value" id="current-file">-</span>
-                    </div>
-                    <div class="progress-info-item">
-                        <span class="info-label">Files:</span>
-                        <span class="info-value"><span id="completed-count">0</span> / <span id="total-count">0</span></span>
-                    </div>
+                <div id="telemetry-status-badge" class="telemetry-badge idle">
+                    <span class="badge-dot"></span>
+                    <span id="telemetry-status-text">Standby</span>
                 </div>
             </div>
 
-            <!-- File Sizes Section -->
-            <div class="section-divider"></div>
-            <div class="files-section">
-                <div class="section-title">
-                    <i class="bi bi-hdd-fill"></i>
-                    <span>File Sizes</span>
+            <div class="right-column-content">
+                <!-- Hero Progress Card -->
+                <div class="progress-hero-card">
+                    <div class="progress-hero-header">
+                        <span class="progress-label">Deployment Execution</span>
+                        <span class="progress-value-display" id="progress-text">0%</span>
+                    </div>
+
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="progress-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Pipeline Stepper -->
+                    <div class="pipeline-stepper">
+                        <div class="step-item" id="step-stage-1">
+                            <div class="step-node"><i class="bi bi-cloud-download"></i></div>
+                            <span class="step-label">Fetch</span>
+                        </div>
+                        <div class="step-connector"></div>
+                        <div class="step-item" id="step-stage-2">
+                            <div class="step-node"><i class="bi bi-arrow-right-left"></i></div>
+                            <span class="step-label">Transfer</span>
+                        </div>
+                        <div class="step-connector"></div>
+                        <div class="step-item" id="step-stage-3">
+                            <div class="step-node"><i class="bi bi-cpu"></i></div>
+                            <span class="step-label">Deploy</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="files-list" id="file-sizes-container">
-                    <div class="files-cards-wrapper">
-                        <div id="file-sizes-body" class="files-cards-container">
-                            <div class="empty-state">
-                                <i class="bi bi-inbox"></i>
-                                <span>Run deployment to see file sizes</span>
+
+                <!-- Telemetry Metrics 2x2 Grid -->
+                <div class="telemetry-grid">
+                    <div class="telemetry-card">
+                        <div class="telemetry-card-icon active-file-icon">
+                            <i class="bi bi-file-earmark-code"></i>
+                        </div>
+                        <div class="telemetry-card-info">
+                            <span class="telemetry-card-label">Active Artifact</span>
+                            <span class="telemetry-card-val" id="current-file">-</span>
+                        </div>
+                    </div>
+
+                    <div class="telemetry-card">
+                        <div class="telemetry-card-icon count-icon">
+                            <i class="bi bi-layers-half"></i>
+                        </div>
+                        <div class="telemetry-card-info">
+                            <span class="telemetry-card-label">Files Processed</span>
+                            <span class="telemetry-card-val"><span id="completed-count">0</span> / <span id="total-count">0</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Sizes Section -->
+                <div class="files-section">
+                    <div class="section-title">
+                        <i class="bi bi-hdd-stack-fill"></i>
+                        <span>Artifact Transfer Matrix</span>
+                    </div>
+                    <div class="files-list" id="file-sizes-container">
+                        <div class="files-cards-wrapper">
+                            <div id="file-sizes-body" class="files-cards-container">
+                                <div class="empty-state">
+                                    <i class="bi bi-inbox"></i>
+                                    <span>Run deployment to monitor WAR sizes & transfer matrix</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Connection Status -->
-            <div class="section-divider"></div>
-            <div class="connection-section">
-                <div class="section-title">
-                    <i class="bi bi-diagram-3-fill"></i>
-                    <span>Connection Status</span>
-                </div>
-                <div class="connection-grid">
-                    <div class="connection-item" id="source-status">
-                        <div class="conn-icon">
-                            <i class="bi bi-hdd-network"></i>
-                        </div>
-                        <div class="conn-info">
-                            <span class="conn-label">Source</span>
-                            <span class="conn-status unknown">Not tested</span>
-                        </div>
+                <!-- Connection Status -->
+                <div class="connection-section">
+                    <div class="section-title">
+                        <i class="bi bi-shield-check"></i>
+                        <span>Node Status</span>
                     </div>
-                    <div class="connection-item" id="target-status">
-                        <div class="conn-icon">
-                            <i class="bi bi-cloud"></i>
+                    <div class="connection-grid">
+                        <div class="connection-item" id="source-status">
+                            <div class="conn-icon">
+                                <i class="bi bi-hdd-network"></i>
+                            </div>
+                            <div class="conn-info">
+                                <span class="conn-label">Source Node</span>
+                                <span class="conn-status unknown">Not tested</span>
+                            </div>
                         </div>
-                        <div class="conn-info">
-                            <span class="conn-label">Target</span>
-                            <span class="conn-status unknown">Not tested</span>
+                        <div class="connection-item" id="target-status">
+                            <div class="conn-icon">
+                                <i class="bi bi-server"></i>
+                            </div>
+                            <div class="conn-info">
+                                <span class="conn-label">Target Server</span>
+                                <span class="conn-status unknown">Not tested</span>
+                            </div>
                         </div>
                     </div>
                 </div>
