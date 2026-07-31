@@ -1476,14 +1476,10 @@ function addTargetRoute(host = '', username = '') {
     const container = document.getElementById('target-routes-list');
     const item = document.createElement('div');
     item.className = 'route-item';
-    item.style.cssText = 'display: flex; gap: 8px; padding: 10px; background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px;';
     item.innerHTML = `
-        <input type="text" placeholder="PAM_NV.ibsplc.aero" value="${host}" data-field="host"
-               style="flex: 1; padding: 8px 12px; background: rgba(17, 24, 39, 0.6); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 6px; color: #e5e7eb; font-size: 13px; font-family: 'JetBrains Mono', monospace;">
-        <input type="text" placeholder="user@domain%context%ip" value="${username}" data-field="username"
-               style="flex: 2; padding: 8px 12px; background: rgba(17, 24, 39, 0.6); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 6px; color: #e5e7eb; font-size: 13px; font-family: 'JetBrains Mono', monospace;">
-        <button class="btn-remove-route" onclick="removeTargetRoute(this)" title="Remove"
-                style="padding: 8px 12px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 6px; color: #f87171; cursor: pointer; transition: all 0.2s;">
+        <input type="text" class="config-input" placeholder="PAM_NV.ibsplc.aero" value="${host}" data-field="host">
+        <input type="text" class="config-input" placeholder="user@domain%context%ip" value="${username}" data-field="username">
+        <button class="btn-remove-route" onclick="removeTargetRoute(this)" title="Remove Route">
             <i class="bi bi-trash-fill"></i>
         </button>
     `;
