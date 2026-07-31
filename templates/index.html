@@ -36,6 +36,9 @@
                 <i class="bi bi-tag-fill"></i>
                 <span id="header-version-text">v3.96.x</span>
             </div>
+            <button id="theme-toggle-btn" class="theme-toggle" onclick="toggleTheme()" title="Switch Theme">
+                <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
+            </button>
             <div id="status-badge" class="status-badge">
                 <div class="status-dot"></div>
                 <span class="status-text">Disconnected</span>
@@ -731,6 +734,29 @@
             const u = document.getElementById('target-username').value || 'Not set';
             alert(`Configuration:\n\nVersion: ${v}\nTarget: ${t}\nUsername: ${u}\n\nPaths:\n• Source: /iflightneo/S3_BUILD/NonMS/KE/${v}/Wars\n• Target: /iflightneo/global/Utilities/${v}/Wars`);
         });
+
+        // Theme Toggle
+        function toggleTheme() {
+            const body = document.body;
+            const icon = document.getElementById('theme-icon');
+            if (body.classList.contains('light-theme')) {
+                body.classList.remove('light-theme');
+                icon.className = 'bi bi-moon-stars-fill';
+                localStorage.setItem('iflight-theme', 'dark');
+            } else {
+                body.classList.add('light-theme');
+                icon.className = 'bi bi-sun-fill';
+                localStorage.setItem('iflight-theme', 'light');
+            }
+        }
+        // Restore saved theme
+        (function() {
+            if (localStorage.getItem('iflight-theme') === 'light') {
+                document.body.classList.add('light-theme');
+                const icon = document.getElementById('theme-icon');
+                if (icon) icon.className = 'bi bi-sun-fill';
+            }
+        })();
     </script>
 </body>
 </html>
