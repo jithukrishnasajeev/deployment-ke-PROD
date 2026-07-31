@@ -79,7 +79,7 @@ def get_aws_cmd():
     ]
     for path in possible_paths:
         if os.path.exists(path):
-            return f'"{path}"'
+            return path
     return 'aws'
 
 
@@ -316,6 +316,10 @@ def log_message(message, level='info', file_info=None):
     }
     deployment_state['logs'].append(log_entry)
     broadcast_message('log', log_entry)
+    try:
+        print(f"[{timestamp}] [{level.upper()}] {message}")
+    except UnicodeEncodeError:
+        print(f"[{timestamp}] [{level.upper()}] {message.encode('ascii', 'backslashreplace').decode('ascii')}")
 
 
 def update_progress(progress, current_file=None):
@@ -1430,11 +1434,11 @@ def aws_sso_login():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/check-aws-sso', methods=['POST'])
+@app.route('/api/check-aws-sso', methods=['GET', 'POST'])
 def check_aws_sso():
     """Check if AWS SSO session is active, auto-launch login if expired"""
     try:
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         config_path = os.path.join(os.path.dirname(__file__), 'deployment_config.json')
         config = load_config_from_json(config_path)
         profile = data.get('profile', getattr(config, 'S3_PROFILE', 'iFlightCrew_Dev'))
@@ -1463,7 +1467,7 @@ def check_aws_sso():
             
     except Exception as e:
         log_message(f"✗ AWS SSO check failed: {str(e)}", 'error')
-        return jsonify({'active': False, 'error': str(e)}), 500
+        return jsonify({'active': False, 'authenticated': False, 'error': str(e)})
 
 
 @app.route('/api/config/reset', methods=['POST'])

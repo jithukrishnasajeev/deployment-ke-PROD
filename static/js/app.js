@@ -107,13 +107,20 @@ async function checkAndAutoLoginAwsSso() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ profile: profile })
         });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error('Non-JSON response from server');
+        }
         const data = await response.json();
-        if (data.active) {
+        if (data.active || data.authenticated) {
             addLog('success', `✅ AWS SSO Session is ACTIVE for profile '${profile}'! Ready to download.`);
         } else if (data.initiated_login) {
-            addLog('warning', `🔑 AWS SSO session expired or unauthenticated. Launched browser login window for profile '${profile}'.`);
+            addLog('warning', `🔑 AWS SSO session expired. Launched browser login for profile '${profile}'.`);
         } else if (data.error) {
-            addLog('error', `❌ AWS SSO status check error: ${data.error}`);
+            addLog('warning', `⚠️ AWS SSO check: ${data.error}`);
             triggerAwsSsoLogin();
         }
     } catch (e) {
@@ -131,11 +138,18 @@ async function triggerAwsSsoLogin() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ profile: profile })
         });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error('Non-JSON response from server');
+        }
         const data = await response.json();
         if (data.error) {
             addLog('error', '❌ AWS SSO Login failed: ' + data.error);
         } else {
-            addLog('success', '✅ ' + data.message);
+            addLog('success', '✅ ' + (data.message || 'AWS SSO login initialized.'));
         }
     } catch (e) {
         addLog('error', '❌ Network error during AWS SSO Login: ' + e.message);
