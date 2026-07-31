@@ -665,6 +665,9 @@ async function checkServerConnection() {
         return;
     }
     
+    isDeploying = true;
+    setButtonsDisabled(true);
+
     addLog('info', '═══════════════════════════════════════════════════════════');
     addLog('info', `🔍 Testing connections for version: ${version}`);
     addLog('info', `🎯 Target: ${targetServer} (${targetUsername})`);
@@ -719,6 +722,9 @@ async function checkServerConnection() {
         updateStatus('Error', 'bg-danger');
         sessionStorage.removeItem('lastConnectionTest');
         sessionStorage.removeItem('connectionTestResults');
+    } finally {
+        isDeploying = false;
+        setButtonsDisabled(false);
     }
 }
 
@@ -813,14 +819,20 @@ function setButtonsDisabled(disabled) {
     const step1Btn = document.getElementById('step1-btn');
     const step2Btn = document.getElementById('step2-btn');
     const step3Btn = document.getElementById('step3-btn');
+    const quick12Btn = document.getElementById('quick-step12-btn');
+    const quick23Btn = document.getElementById('quick-step23-btn');
+    const testBtn = document.getElementById('test-btn');
     const cancelBtn = document.getElementById('cancel-btn');
     
     if (deployBtn) deployBtn.disabled = disabled;
     if (step1Btn) step1Btn.disabled = disabled;
     if (step2Btn) step2Btn.disabled = disabled;
     if (step3Btn) step3Btn.disabled = disabled;
+    if (quick12Btn) quick12Btn.disabled = disabled;
+    if (quick23Btn) quick23Btn.disabled = disabled;
+    if (testBtn) testBtn.disabled = disabled;
     
-    // Smartly show Cancel button ONLY during active action/deployment
+    // Smartly show Cancel button ONLY during active action/deployment/testing
     if (cancelBtn) {
         cancelBtn.disabled = false;
         const textSpan = cancelBtn.querySelector('span');
