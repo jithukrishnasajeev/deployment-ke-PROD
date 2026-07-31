@@ -12,7 +12,7 @@ import getpass
 import time
 import json
 import hashlib
-
+import re
 from dotenv import load_dotenv
 import concurrent.futures
 import socket
