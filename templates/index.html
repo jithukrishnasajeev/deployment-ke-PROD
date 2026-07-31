@@ -357,7 +357,7 @@
                             </div>
 
                             <!-- Target Server Card (Routes) -->
-                            <div class="config-card">
+                            <div class="config-card target-routes-card">
                                 <div class="config-card-header">
                                     <div class="card-icon target">
                                         <i class="bi bi-cloud-upload-fill"></i>
@@ -368,19 +368,19 @@
                                     </div>
                                 </div>
                                 <div class="config-card-body">
-                                    <div class="input-field small">
-                                        <label><i class="bi bi-ethernet"></i> Port</label>
-                                        <input type="number" id="cfg-target-port" value="22" placeholder="22">
-                                    </div>
-                                    <div style="margin-top: 15px;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <label style="margin: 0; font-size: 13px; color: var(--text-secondary);"><i class="bi bi-diagram-3"></i> Routes</label>
-                                            <button class="mini-btn" onclick="addTargetRoute()" title="Add Route">
-                                                <i class="bi bi-plus-lg"></i>
-                                                <span>Add</span>
-                                            </button>
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
+                                        <div class="input-field small" style="width: 120px;">
+                                            <label><i class="bi bi-ethernet"></i> SSH Port</label>
+                                            <input type="number" id="cfg-target-port" value="22" placeholder="22">
                                         </div>
-                                        <div id="target-routes-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto;"></div>
+                                        <button class="mini-btn" onclick="addTargetRoute()" title="Add Route" style="background: var(--accent-bg); color: var(--accent); border: 1px solid rgba(45,212,191,0.3); padding: 6px 14px; border-radius: var(--r-sm); font-size: 11.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                            <i class="bi bi-plus-lg"></i>
+                                            <span>Add Route</span>
+                                        </button>
+                                    </div>
+                                    <div style="margin-top: 10px;">
+                                        <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 8px;"><i class="bi bi-diagram-3" style="color: var(--accent);"></i> Configured Target Routes (PAM Hosts)</label>
+                                        <div id="target-routes-list"></div>
                                     </div>
                                 </div>
                             </div>

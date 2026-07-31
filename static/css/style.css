@@ -352,7 +352,7 @@ body.config-fullscreen-mode .resize-handle { display: none !important; }
 body.config-fullscreen-mode .config-fullscreen-header { display: flex !important; }
 
 body.config-fullscreen-mode .tab-content-scroll {
-    max-width: 900px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 24px 32px;
 }
@@ -363,6 +363,13 @@ body.config-fullscreen-mode .config-grid {
 }
 body.config-fullscreen-mode .target-routes-card {
     grid-column: 1 / -1;
+}
+body.config-fullscreen-mode #target-routes-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 10px;
+    max-height: 320px;
+    overflow-y: auto;
 }
 body.config-fullscreen-mode .config-section-large {
     grid-column: 1 / -1;
