@@ -2039,5 +2039,5 @@ if __name__ == '__main__':
     print("=" * 60)
     print("iFlight Neo Wars Deployment - Web Interface")
     print("=" * 60)
-    print(f"\n🌐 Open in browser: http://localhost:5000\n")
+    print(f"\n[WEB] Open in browser: http://localhost:5000\n")
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False, threaded=True)
