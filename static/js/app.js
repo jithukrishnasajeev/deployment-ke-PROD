@@ -730,12 +730,7 @@ async function checkServerConnection() {
 
 // Cancel deployment
 async function cancelDeployment() {
-    if (!isDeploying) {
-        addLog('info', 'No deployment in progress.');
-        return;
-    }
-    
-    if (!confirm('Are you sure you want to cancel the deployment?')) {
+    if (!confirm('Are you sure you want to cancel?')) {
         return;
     }
     
@@ -748,14 +743,13 @@ async function cancelDeployment() {
     
     try {
         await fetch('/api/cancel', { method: 'POST' });
-        addLog('warning', 'Cancellation requested...');
+        addLog('warning', '⚠️ Cancel request sent to server.');
     } catch (error) {
         addLog('error', 'Failed to cancel: ' + error.message);
-        if (cancelBtn) {
-            cancelBtn.disabled = false;
-            const textSpan = cancelBtn.querySelector('span');
-            if (textSpan) textSpan.textContent = 'Cancel';
-        }
+    } finally {
+        isDeploying = false;
+        setButtonsDisabled(false);
+        updateStatus('Cancelled', 'bg-warning');
     }
 }
 
@@ -813,7 +807,7 @@ async function retryFailed() {
     }
 }
 
-// Enable/disable all deployment buttons and smartly toggle Cancel button
+// Enable/disable all deployment buttons and smartly swap Test with Cancel button
 function setButtonsDisabled(disabled) {
     const deployBtn = document.getElementById('deploy-btn');
     const step1Btn = document.getElementById('step1-btn');
@@ -830,9 +824,13 @@ function setButtonsDisabled(disabled) {
     if (step3Btn) step3Btn.disabled = disabled;
     if (quick12Btn) quick12Btn.disabled = disabled;
     if (quick23Btn) quick23Btn.disabled = disabled;
-    if (testBtn) testBtn.disabled = disabled;
     
-    // Smartly show Cancel button ONLY during active action/deployment/testing
+    // Clean single-button swap: Hide Test button when active process runs so Cancel takes its exact position
+    if (testBtn) {
+        testBtn.disabled = disabled;
+        testBtn.style.display = disabled ? 'none' : 'inline-flex';
+    }
+
     if (cancelBtn) {
         cancelBtn.disabled = false;
         const textSpan = cancelBtn.querySelector('span');

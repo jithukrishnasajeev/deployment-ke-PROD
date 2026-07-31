@@ -1750,6 +1750,8 @@ def retry_failed():
 def test_connection():
     """Test server connections with detailed path verification and dry run"""
     results = {'source': None, 'target': None, 'success': True}
+    deployment_state['running'] = True
+    deployment_state['cancelled'] = False
     
     try:
         data = request.json or {}
@@ -2023,16 +2025,21 @@ def test_connection():
     except Exception as e:
         log_message(f"✗ Configuration error: {str(e)}", 'error')
         return jsonify({'success': False, 'error': str(e)})
+    finally:
+        deployment_state['running'] = False
 
 
 @app.route('/api/cancel', methods=['POST'])
 def cancel_deployment():
-    """Cancel running deployment"""
-    if deployment_state['running']:
-        deployment_state['cancelled'] = True
-        log_message("⚠ Cancellation requested...", 'warning')
-        return jsonify({'success': True})
-    return jsonify({'success': False, 'error': 'No deployment running'})
+    """Cancel running deployment or connection test"""
+    deployment_state['cancelled'] = True
+    deployment_state['running'] = False
+    log_message("⚠️ Cancellation requested by user", 'warning')
+    broadcast_message('complete', {
+        'cancelled': True,
+        'failed_wars': deployment_state.get('failed_wars', [])
+    })
+    return jsonify({'success': True})
 
 
 if __name__ == '__main__':
