@@ -1077,11 +1077,12 @@ function createConfetti() {
     }
 }
 
-// Update file sizes display with modern card layout (in-place DOM updates)
+// Update file sizes display with modern high-density matrix grid (in-place DOM updates)
 function updateFileSizes(sizes) {
     if (!sizes || typeof sizes !== 'object') return;
     fileSizes = sizes;
     const container = document.getElementById('file-sizes-body');
+    const matrixCountBadge = document.getElementById('matrix-count-badge');
     if (!container) return;
     
     const entries = Object.entries(sizes);
@@ -1094,6 +1095,7 @@ function updateFileSizes(sizes) {
                 </div>
             `;
         }
+        if (matrixCountBadge) matrixCountBadge.textContent = '0 Artifacts';
         return;
     }
     
@@ -1102,101 +1104,98 @@ function updateFileSizes(sizes) {
         emptyState.remove();
     }
     
+    let totalBytesSum = 0;
+    let completedCount = 0;
+    
     entries.forEach(([prefix, info]) => {
-        const cardId = `file-card-${prefix.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        const cardId = `matrix-tile-${prefix.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
         let card = document.getElementById(cardId);
         
-        const statusBadge = getStatusBadge(info.status);
+        let cleanName = (info.name || prefix).replace(/^iflight-/, '').replace(/-webapp.*$/, '').replace(/[-_]/g, '_').toUpperCase();
         const sourceSize = info.source_size > 0 ? formatSize(info.source_size) : '-';
         const targetSize = info.target_size > 0 ? formatSize(info.target_size) : '-';
         
         const isTransferring = (info.status === 'downloading' || info.status === 'processing' || info.status === 'uploading' || info.status === 'extracting');
+        const isDone = (info.status === 'downloaded' || info.status === 'extracted' || info.status === 'deployed');
+        const isError = (info.status === 'error');
+        
+        if (isDone) completedCount++;
+        if (info.total_size) totalBytesSum += info.total_size;
+        else if (info.source_size) totalBytesSum += info.source_size;
+        
         const totalBytes = info.total_size || info.source_size || 0;
         const transferredBytes = info.transferred || 0;
         const calcPercent = totalBytes > 0 ? (transferredBytes / totalBytes * 100) : (info.transfer_progress || 0);
-        const percent = Math.min(100, Math.max(0, calcPercent)).toFixed(1);
-        const transferred = formatSize(transferredBytes);
-        const total = totalBytes > 0 ? formatSize(totalBytes) : 'Calculating...';
+        const percent = Math.min(100, Math.max(0, calcPercent)).toFixed(0);
+        
+        let statusClass = 'pending';
+        let badgeHtml = '<span class="tile-pill pill-pending"><i class="bi bi-circle"></i> Wait</span>';
+        
+        if (isTransferring) {
+            statusClass = 'transferring';
+            const actionIcon = info.status === 'uploading' ? 'bi-cloud-arrow-up' : 'bi-cloud-arrow-down';
+            badgeHtml = `<span class="tile-pill pill-active"><i class="bi ${actionIcon}"></i> ${percent}%</span>`;
+        } else if (isDone) {
+            statusClass = 'completed';
+            badgeHtml = `<span class="tile-pill pill-done"><i class="bi bi-check2"></i> ${targetSize !== '-' ? targetSize : 'OK'}</span>`;
+        } else if (isError) {
+            statusClass = 'error';
+            badgeHtml = '<span class="tile-pill pill-error"><i class="bi bi-x-circle"></i> Err</span>';
+        }
+        
+        const tooltip = `${prefix} | Status: ${info.status || 'pending'} | Src: ${sourceSize} | Tgt: ${targetSize}`;
         
         if (!card) {
             card = document.createElement('div');
             card.id = cardId;
-            card.className = 'file-card';
+            card.className = `matrix-tile ${statusClass}`;
+            card.title = tooltip;
             card.innerHTML = `
-                <div class="file-card-header">
-                    <div class="file-card-name">
+                <div class="matrix-tile-header">
+                    <div class="matrix-tile-name">
                         <i class="bi bi-file-earmark-code-fill"></i>
-                        <span class="file-card-title">${escapeHtml(info.name || prefix)}</span>
+                        <span class="tile-name-text">${escapeHtml(cleanName)}</span>
                     </div>
-                    <div class="file-card-status" data-status="${escapeHtml(info.status || '')}">
-                        ${statusBadge}
-                    </div>
+                    <div class="matrix-tile-badge">${badgeHtml}</div>
                 </div>
-                <div class="file-card-body">
-                    <div class="file-size-item">
-                        <div class="file-size-label"><i class="bi bi-download"></i> Source</div>
-                        <div class="file-size-value source-size">${sourceSize}</div>
-                    </div>
-                    <div class="file-size-item">
-                        <div class="file-size-label"><i class="bi bi-upload"></i> Target</div>
-                        <div class="file-size-value target-size">${targetSize}</div>
-                    </div>
+                <div class="matrix-tile-flow">
+                    <span class="flow-src" title="Source size"><i class="bi bi-cloud-arrow-down"></i> <span class="src-val">${sourceSize}</span></span>
+                    <i class="bi bi-arrow-right flow-arrow"></i>
+                    <span class="flow-tgt" title="Target size"><i class="bi bi-cloud-arrow-up"></i> <span class="tgt-val">${targetSize}</span></span>
                 </div>
-                <div class="file-card-progress" style="display: ${isTransferring ? 'block' : 'none'};">
-                    <div class="transfer-progress">
-                        <div class="progress-wrapper">
-                            <div class="progress-bar-container">
-                                <div class="progress-bar-fill" style="width: ${percent}%"></div>
-                            </div>
-                            <div class="progress-text">${percent}%</div>
-                        </div>
-                        <div class="transfer-size">${transferred} / ${total}</div>
-                    </div>
+                <div class="matrix-tile-progress-bar" style="display: ${isTransferring ? 'block' : 'none'};">
+                    <div class="matrix-progress-fill" style="width: ${percent}%;"></div>
                 </div>
             `;
             container.appendChild(card);
         } else {
             // Update in place smoothly without destroying DOM
-            const statusEl = card.querySelector('.file-card-status');
-            if (statusEl && statusEl.dataset.status !== info.status) {
-                statusEl.innerHTML = statusBadge;
-                statusEl.dataset.status = info.status || '';
-            }
+            card.className = `matrix-tile ${statusClass}`;
+            card.title = tooltip;
             
-            const srcEl = card.querySelector('.source-size');
-            if (srcEl && srcEl.textContent !== sourceSize) {
-                srcEl.textContent = sourceSize;
-            }
+            const badgeContainer = card.querySelector('.matrix-tile-badge');
+            if (badgeContainer) badgeContainer.innerHTML = badgeHtml;
             
-            const tgtEl = card.querySelector('.target-size');
-            if (tgtEl && tgtEl.textContent !== targetSize) {
-                tgtEl.textContent = targetSize;
-            }
+            const srcVal = card.querySelector('.src-val');
+            if (srcVal && srcVal.textContent !== sourceSize) srcVal.textContent = sourceSize;
             
-            const progressEl = card.querySelector('.file-card-progress');
-            if (progressEl) {
+            const tgtVal = card.querySelector('.tgt-val');
+            if (tgtVal && tgtVal.textContent !== targetSize) tgtVal.textContent = targetSize;
+            
+            const progressBar = card.querySelector('.matrix-tile-progress-bar');
+            const progressFill = card.querySelector('.matrix-progress-fill');
+            if (progressBar && progressFill) {
+                progressBar.style.display = isTransferring ? 'block' : 'none';
                 if (isTransferring) {
-                    if (progressEl.style.display !== 'block') {
-                        progressEl.style.display = 'block';
-                    }
-                    const fillEl = progressEl.querySelector('.progress-bar-fill');
-                    const textEl = progressEl.querySelector('.progress-text');
-                    const sizeEl = progressEl.querySelector('.transfer-size');
-                    
-                    if (fillEl) fillEl.style.width = `${percent}%`;
-                    if (textEl && textEl.textContent !== `${percent}%`) textEl.textContent = `${percent}%`;
-                    if (sizeEl) {
-                        const sizeStr = `${transferred} / ${total}`;
-                        if (sizeEl.textContent !== sizeStr) sizeEl.textContent = sizeStr;
-                    }
-                } else {
-                    if (progressEl.style.display !== 'none') {
-                        progressEl.style.display = 'none';
-                    }
+                    progressFill.style.width = `${percent}%`;
                 }
             }
         }
     });
+    
+    if (matrixCountBadge) {
+        matrixCountBadge.textContent = `${completedCount}/${entries.length} Ready (${formatSize(totalBytesSum)})`;
+    }
 }
 
 // Get status badge HTML with icons
@@ -1535,6 +1534,8 @@ function clearLogs() {
             </div>
         `;
     }
+    const matrixCountBadge = document.getElementById('matrix-count-badge');
+    if (matrixCountBadge) matrixCountBadge.textContent = '0 Artifacts';
     fileSizes = {};
     
     // Reset progress state

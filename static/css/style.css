@@ -1307,13 +1307,13 @@ body.config-fullscreen-mode .passwords-grid {
     border-color: rgba(52, 211, 153, 0.3);
 }
 
-/* File Sizes Matrix */
+/* Artifact Transfer Matrix - Width-Optimized Multi-Column Grid */
 .files-section {
     display: flex;
     flex-direction: column;
     gap: 6px;
     flex: 1;
-    min-height: 200px;
+    min-height: 180px;
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
@@ -1338,6 +1338,21 @@ body.config-fullscreen-mode .passwords-grid {
     text-overflow: ellipsis;
 }
 .section-title i { color: var(--accent); font-size: 12px; }
+
+.matrix-summary-pill {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: var(--r-full);
+    background: var(--bg-card);
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+}
 
 .mini-btn-test-routes {
     font-size: 9.5px;
@@ -1368,7 +1383,7 @@ body.config-fullscreen-mode .passwords-grid {
 
 .files-list {
     flex: 1;
-    min-height: 160px;
+    min-height: 140px;
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--bg-input);
@@ -1381,16 +1396,23 @@ body.config-fullscreen-mode .passwords-grid {
     max-width: 100%;
     box-sizing: border-box;
 }
-.files-cards-wrapper { display: flex; flex-direction: column; flex: 1; min-width: 0; width: 100%; }
-.files-cards-container { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; width: 100%; }
+
+.files-cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
 
 .empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    flex: 1;
-    min-height: 140px;
+    grid-column: 1 / -1;
+    min-height: 120px;
     padding: 16px 12px;
     color: var(--text-muted);
     font-size: 10.5px;
@@ -1405,58 +1427,128 @@ body.config-fullscreen-mode .passwords-grid {
 }
 .empty-state i { font-size: 20px; color: var(--text-dim); }
 
-.file-card {
+/* Futuristic Matrix Tiles */
+.matrix-tile {
     background: var(--bg-card);
     border: 1px solid var(--border-default);
-    border-radius: var(--r-md);
-    padding: 8px 10px;
+    border-radius: var(--r-sm);
+    padding: 6px 8px;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 3px;
+    position: relative;
+    overflow: hidden;
     transition: all var(--dur) var(--ease);
-    box-shadow: var(--shadow-sm);
     min-width: 0;
     max-width: 100%;
-    overflow: hidden;
     box-sizing: border-box;
+    cursor: default;
 }
-.file-card:hover { border-color: var(--border-bright); background: var(--bg-card-hover); }
+.matrix-tile:hover {
+    border-color: var(--border-bright);
+    background: var(--bg-card-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
 
-.file-card-header {
+.matrix-tile.transferring {
+    border-color: var(--border-accent);
+    background: rgba(99, 102, 241, 0.08);
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+}
+.matrix-tile.completed {
+    border-color: rgba(52, 211, 153, 0.25);
+}
+.matrix-tile.error {
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.06);
+}
+
+.matrix-tile-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-width: 0;
-    gap: 6px;
-}
-.file-card-name {
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    font-weight: 600;
-    color: var(--text-primary);
-    display: flex; align-items: center; gap: 5px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-}
-.file-card-name i { color: var(--accent); flex-shrink: 0; }
-
-.file-card-details {
-    display: flex;
-    justify-content: space-between;
-    font-size: 10px;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-    padding-top: 4px;
-    border-top: 1px solid var(--border-subtle);
-    min-width: 0;
     gap: 4px;
+    min-width: 0;
 }
-.file-card-details span {
+.matrix-tile-name {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+}
+.matrix-tile-name i { color: var(--accent); font-size: 11px; flex-shrink: 0; }
+
+.matrix-tile-badge {
+    flex-shrink: 0;
+}
+.tile-pill {
+    font-size: 8.5px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: var(--r-full);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    line-height: 1.2;
     white-space: nowrap;
+}
+.tile-pill.pill-pending { background: var(--bg-input); color: var(--text-muted); border: 1px solid var(--border-subtle); }
+.tile-pill.pill-active  { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--border-accent); }
+.tile-pill.pill-done    { background: var(--success-bg); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); }
+.tile-pill.pill-error   { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+
+.matrix-tile-flow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 8.5px;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    min-width: 0;
+    gap: 2px;
+    padding-top: 1px;
+}
+.flow-src, .flow-tgt {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.flow-src i { color: #38bdf8; font-size: 8.5px; }
+.flow-tgt i { color: #34d399; font-size: 8.5px; }
+.flow-arrow {
+    font-size: 7.5px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.matrix-tile-progress-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2.5px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+}
+.matrix-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--gold));
+    border-radius: 0 2px 2px 0;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 6px var(--accent-glow);
 }
 
 /* Connection Status & Multi-Route Health Matrix */
