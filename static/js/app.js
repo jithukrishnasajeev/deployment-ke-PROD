@@ -1496,9 +1496,17 @@ function updateProgress(progress, currentFile, completed, total) {
     }
     
     if (currentFile && currentFileSpan) {
-        if (currentFileSpan.textContent !== currentFile) {
-            currentFileSpan.textContent = currentFile;
+        // Clean long names like "iflight-crew-notification-webapp-3.96.34.246.war" to "CREW_NOTIF" or short clean tag
+        let displayFile = String(currentFile).trim();
+        if (displayFile.startsWith('iflight-')) {
+            displayFile = displayFile.replace(/^iflight-/, '').replace(/-webapp.*$/, '').replace(/[-_]/g, '_').toUpperCase();
+        } else if (displayFile.includes('.war') || displayFile.includes('.zip')) {
+            displayFile = displayFile.split('.')[0].replace(/^iflight-/, '').replace(/-webapp.*$/, '').toUpperCase();
         }
+        if (currentFileSpan.textContent !== displayFile) {
+            currentFileSpan.textContent = displayFile;
+        }
+        currentFileSpan.title = currentFile; // Full name tooltip on hover
         if (!currentFileSpan.classList.contains('file-processing')) {
             currentFileSpan.classList.add('file-processing');
         }
