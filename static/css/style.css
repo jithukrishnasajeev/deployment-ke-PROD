@@ -1456,6 +1456,44 @@ body.config-fullscreen-mode .passwords-grid {
     100% { background-position: 0% 50%; }
 }
 
+/* Neon Cyber-Glow & Radar Shimmer Scan */
+@keyframes neonPulseCyan {
+    0%, 100% {
+        box-shadow: 0 0 12px rgba(56, 189, 248, 0.28), inset 0 0 10px rgba(56, 189, 248, 0.08);
+        border-color: rgba(56, 189, 248, 0.55);
+    }
+    50% {
+        box-shadow: 0 0 24px rgba(56, 189, 248, 0.55), 0 0 38px rgba(56, 189, 248, 0.25), inset 0 0 16px rgba(56, 189, 248, 0.18);
+        border-color: #38bdf8;
+    }
+}
+@keyframes neonPulseAmber {
+    0%, 100% {
+        box-shadow: 0 0 12px rgba(251, 191, 36, 0.28), inset 0 0 10px rgba(251, 191, 36, 0.08);
+        border-color: rgba(251, 191, 36, 0.55);
+    }
+    50% {
+        box-shadow: 0 0 24px rgba(251, 191, 36, 0.55), 0 0 38px rgba(251, 191, 36, 0.25), inset 0 0 16px rgba(251, 191, 36, 0.18);
+        border-color: #fbbf24;
+    }
+}
+@keyframes neonPulsePurple {
+    0%, 100% {
+        box-shadow: 0 0 12px rgba(168, 85, 247, 0.28), inset 0 0 10px rgba(168, 85, 247, 0.08);
+        border-color: rgba(168, 85, 247, 0.55);
+    }
+    50% {
+        box-shadow: 0 0 24px rgba(168, 85, 247, 0.55), 0 0 38px rgba(168, 85, 247, 0.25), inset 0 0 16px rgba(168, 85, 247, 0.18);
+        border-color: #c084fc;
+    }
+}
+@keyframes neonScanBeam {
+    0% { left: -100%; opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { left: 160%; opacity: 0; }
+}
+
 .spin-fast   { animation: spinFast 1s linear infinite; display: inline-block; }
 .spin-slow   { animation: spinSlow 3.5s linear infinite; display: inline-block; }
 .pulse-glow  { animation: pulseGlow 1.8s ease-in-out infinite; display: inline-block; }
@@ -1466,7 +1504,7 @@ body.config-fullscreen-mode .passwords-grid {
 .matrix-row {
     background: var(--bg-card);
     border: 1px solid var(--border-default);
-    border-left: 3px solid var(--border-default);
+    border-left: 3.5px solid var(--border-default);
     border-radius: var(--r-sm);
     padding: 7px 10px;
     display: flex;
@@ -1495,113 +1533,186 @@ body.config-fullscreen-mode .passwords-grid {
     border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
-/* 2. Downloading from S3 (Electric Cyber-Cyan) */
+/* 2. Downloading from S3 (Electric Neon Cyber-Cyan with Radar Beam Scan) */
 .matrix-row.status-downloading {
-    border-color: rgba(56, 189, 248, 0.45);
-    border-left-color: #38bdf8;
-    background: rgba(56, 189, 248, 0.08);
-    box-shadow: 0 0 14px rgba(56, 189, 248, 0.18);
+    border-color: rgba(56, 189, 248, 0.7);
+    border-left: 4px solid #38bdf8;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(15, 23, 42, 0.65));
+    animation: neonPulseCyan 2.4s ease-in-out infinite;
+    position: relative;
 }
-.matrix-row.status-downloading .matrix-row-artifact i { color: #38bdf8; }
-.matrix-pill.pill-downloading {
-    background: rgba(56, 189, 248, 0.15);
+.matrix-row.status-downloading::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.25), rgba(255, 255, 255, 0.15), transparent);
+    transform: skewX(-20deg);
+    animation: neonScanBeam 2.8s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 1;
+}
+.matrix-row.status-downloading .matrix-row-artifact i {
     color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.4);
-    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+    filter: drop-shadow(0 0 8px #38bdf8);
+}
+.matrix-row.status-downloading .artifact-name {
+    color: #f0f9ff;
+    text-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+.matrix-pill.pill-downloading {
+    background: rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.6);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+    text-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+    font-weight: 700;
 }
 .matrix-row.status-downloading .matrix-progress-fill {
-    background: linear-gradient(90deg, #0284c7, #38bdf8, #7dd3fc, #0284c7);
+    background: linear-gradient(90deg, #0284c7, #38bdf8, #bae6fd, #38bdf8, #0284c7);
     background-size: 200% 100%;
-    animation: gradientWave 2s linear infinite;
-    box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+    animation: gradientWave 1.8s linear infinite;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
 }
 .matrix-row.status-downloading .matrix-progress-num {
     color: #38bdf8;
+    text-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
+    font-weight: 800;
 }
 
 /* 3. Downloaded from S3 (Luminous Teal / Aqua Mint) */
 .matrix-row.status-downloaded {
     border-left-color: #2dd4bf;
-    background: rgba(45, 212, 191, 0.05);
+    background: rgba(45, 212, 191, 0.06);
 }
 .matrix-row.status-downloaded .matrix-row-artifact i { color: #2dd4bf; }
 .matrix-pill.pill-downloaded {
     background: rgba(45, 212, 191, 0.15);
     color: #2dd4bf;
     border: 1px solid rgba(45, 212, 191, 0.35);
+    box-shadow: 0 0 6px rgba(45, 212, 191, 0.2);
 }
 
-/* 4. Extracting WAR / ZIP (Radiant Sunset Amber) */
+/* 4. Extracting WAR / ZIP (Radiant Sunset Amber Neon) */
 .matrix-row.status-extracting {
-    border-color: rgba(251, 191, 36, 0.45);
-    border-left-color: #fbbf24;
-    background: rgba(251, 191, 36, 0.08);
-    box-shadow: 0 0 14px rgba(251, 191, 36, 0.2);
+    border-color: rgba(251, 191, 36, 0.7);
+    border-left: 4px solid #fbbf24;
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(15, 23, 42, 0.65));
+    animation: neonPulseAmber 2.4s ease-in-out infinite;
+    position: relative;
 }
-.matrix-row.status-extracting .matrix-row-artifact i { color: #fbbf24; }
-.matrix-pill.pill-extracting {
-    background: rgba(251, 191, 36, 0.15);
+.matrix-row.status-extracting::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.25), rgba(255, 255, 255, 0.15), transparent);
+    transform: skewX(-20deg);
+    animation: neonScanBeam 2.8s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 1;
+}
+.matrix-row.status-extracting .matrix-row-artifact i {
     color: #fbbf24;
-    border: 1px solid rgba(251, 191, 36, 0.4);
-    box-shadow: 0 0 8px rgba(251, 191, 36, 0.25);
+    filter: drop-shadow(0 0 8px #fbbf24);
+}
+.matrix-row.status-extracting .artifact-name {
+    color: #fffbeb;
+    text-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
+}
+.matrix-pill.pill-extracting {
+    background: rgba(251, 191, 36, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.6);
+    box-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+    text-shadow: 0 0 6px rgba(251, 191, 36, 0.6);
+    font-weight: 700;
 }
 .matrix-row.status-extracting .matrix-progress-fill {
-    background: linear-gradient(90deg, #d97706, #fbbf24, #fde68a, #d97706);
+    background: linear-gradient(90deg, #d97706, #fbbf24, #fef08a, #fbbf24, #d97706);
     background-size: 200% 100%;
-    animation: gradientWave 2s linear infinite;
-    box-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
+    animation: gradientWave 1.8s linear infinite;
+    box-shadow: 0 0 10px rgba(251, 191, 36, 0.7);
 }
 .matrix-row.status-extracting .matrix-progress-num {
     color: #fbbf24;
+    text-shadow: 0 0 8px rgba(251, 191, 36, 0.7);
+    font-weight: 800;
 }
 
 /* 5. Extracted (Warm Golden Honey) */
 .matrix-row.status-extracted {
     border-left-color: #f59e0b;
-    background: rgba(245, 158, 11, 0.05);
+    background: rgba(245, 158, 11, 0.06);
 }
 .matrix-row.status-extracted .matrix-row-artifact i { color: #f59e0b; }
 .matrix-pill.pill-extracted {
     background: rgba(245, 158, 11, 0.15);
     color: #f59e0b;
     border: 1px solid rgba(245, 158, 11, 0.35);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.2);
 }
 
-/* 6. Uploading / Deploying across PAM Routes (Neon Royal Purple / Violet) */
+/* 6. Uploading across PAM Routes (Neon Royal Purple with Radar Beam Scan) */
 .matrix-row.status-uploading,
 .matrix-row.status-deploying {
-    border-color: rgba(168, 85, 247, 0.5);
-    border-left-color: #c084fc;
-    background: rgba(168, 85, 247, 0.09);
-    box-shadow: 0 0 16px rgba(168, 85, 247, 0.22);
+    border-color: rgba(168, 85, 247, 0.75);
+    border-left: 4px solid #c084fc;
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.14), rgba(15, 23, 42, 0.65));
+    animation: neonPulsePurple 2.4s ease-in-out infinite;
+    position: relative;
+}
+.matrix-row.status-uploading::before,
+.matrix-row.status-deploying::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%; width: 50%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.28), rgba(255, 255, 255, 0.15), transparent);
+    transform: skewX(-20deg);
+    animation: neonScanBeam 2.8s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 1;
 }
 .matrix-row.status-uploading .matrix-row-artifact i,
-.matrix-row.status-deploying .matrix-row-artifact i { color: #c084fc; }
+.matrix-row.status-deploying .matrix-row-artifact i {
+    color: #c084fc;
+    filter: drop-shadow(0 0 8px #c084fc);
+}
+.matrix-row.status-uploading .artifact-name,
+.matrix-row.status-deploying .artifact-name {
+    color: #faf5ff;
+    text-shadow: 0 0 8px rgba(168, 85, 247, 0.5);
+}
 .matrix-pill.pill-uploading,
 .matrix-pill.pill-deploying {
-    background: rgba(168, 85, 247, 0.18);
+    background: rgba(168, 85, 247, 0.22);
     color: #c084fc;
-    border: 1px solid rgba(168, 85, 247, 0.45);
-    box-shadow: 0 0 8px rgba(168, 85, 247, 0.28);
+    border: 1px solid rgba(168, 85, 247, 0.65);
+    box-shadow: 0 0 14px rgba(168, 85, 247, 0.45);
+    text-shadow: 0 0 6px rgba(168, 85, 247, 0.6);
+    font-weight: 700;
 }
 .matrix-row.status-uploading .matrix-progress-fill,
 .matrix-row.status-deploying .matrix-progress-fill {
-    background: linear-gradient(90deg, #7c3aed, #c084fc, #e879f9, #7c3aed);
+    background: linear-gradient(90deg, #7c3aed, #c084fc, #f0abfc, #c084fc, #7c3aed);
     background-size: 200% 100%;
-    animation: gradientWave 2s linear infinite;
-    box-shadow: 0 0 8px rgba(168, 85, 247, 0.5);
+    animation: gradientWave 1.8s linear infinite;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.7);
 }
 .matrix-row.status-uploading .matrix-progress-num,
 .matrix-row.status-deploying .matrix-progress-num {
     color: #c084fc;
+    text-shadow: 0 0 8px rgba(168, 85, 247, 0.7);
+    font-weight: 800;
 }
 
-/* 7. Deployed / Completed (Lush Emerald Green) */
+/* 7. Deployed / Completed (Lush Emerald Green with Spring Pop) */
 .matrix-row.status-deployed {
     border-left-color: #34d399;
     background: rgba(52, 211, 153, 0.06);
 }
-.matrix-row.status-deployed .matrix-row-artifact i { color: #34d399; }
+.matrix-row.status-deployed .matrix-row-artifact i {
+    color: #34d399;
+    filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.5));
+}
 .matrix-pill.pill-deployed {
     background: rgba(52, 211, 153, 0.16);
     color: #34d399;
@@ -1612,18 +1723,23 @@ body.config-fullscreen-mode .passwords-grid {
 /* 8. Error / Failed (Crimson Coral Red) */
 .matrix-row.status-error,
 .matrix-row.status-failed {
-    border-color: rgba(244, 63, 94, 0.5);
-    border-left-color: #f43f5e;
-    background: rgba(244, 63, 94, 0.08);
-    box-shadow: 0 0 12px rgba(244, 63, 94, 0.25);
+    border-color: rgba(244, 63, 94, 0.55);
+    border-left: 4px solid #f43f5e;
+    background: rgba(244, 63, 94, 0.09);
+    box-shadow: 0 0 14px rgba(244, 63, 94, 0.28);
 }
 .matrix-row.status-error .matrix-row-artifact i,
-.matrix-row.status-failed .matrix-row-artifact i { color: #f43f5e; }
+.matrix-row.status-failed .matrix-row-artifact i {
+    color: #f43f5e;
+    filter: drop-shadow(0 0 6px #f43f5e);
+}
 .matrix-pill.pill-error,
 .matrix-pill.pill-failed {
-    background: rgba(244, 63, 94, 0.18);
+    background: rgba(244, 63, 94, 0.2);
     color: #f43f5e;
-    border: 1px solid rgba(244, 63, 94, 0.5);
+    border: 1px solid rgba(244, 63, 94, 0.55);
+    box-shadow: 0 0 8px rgba(244, 63, 94, 0.3);
+    font-weight: 700;
 }
 
 .matrix-row-main {
