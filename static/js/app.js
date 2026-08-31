@@ -1131,7 +1131,7 @@ function updateFileSizes(sizes) {
             badgeHtml = `<span class="matrix-pill pill-downloading"><i class="bi bi-cloud-arrow-down-fill float-anim"></i> Downloading</span>`;
         } else if (status === 'downloaded') {
             statusClass = 'status-downloaded';
-            badgeHtml = `<span class="matrix-pill pill-downloaded"><i class="bi bi-check2-circle pop-anim"></i> Downloaded</span>`;
+            badgeHtml = `<span class="matrix-pill pill-downloaded"><span class="matrix-status-dot status-dot-green"></span> Downloaded</span>`;
         } else if (status === 'extracting') {
             statusClass = 'status-extracting';
             isTransferring = true;
@@ -1224,7 +1224,7 @@ function getStatusBadge(status) {
         'pending': '<span class="matrix-pill pill-pending"><i class="bi bi-clock"></i> Queued</span>',
         'processing': '<span class="matrix-pill pill-downloading"><i class="bi bi-cloud-arrow-down-fill float-anim"></i> Processing</span>',
         'downloading': '<span class="matrix-pill pill-downloading"><i class="bi bi-cloud-arrow-down-fill float-anim"></i> Downloading</span>',
-        'downloaded': '<span class="matrix-pill pill-downloaded"><i class="bi bi-check2-circle pop-anim"></i> Downloaded</span>',
+        'downloaded': '<span class="matrix-pill pill-downloaded"><span class="matrix-status-dot status-dot-green"></span> Downloaded</span>',
         'extracting': '<span class="matrix-pill pill-extracting"><i class="bi bi-gear-fill spin-slow"></i> Extracting</span>',
         'extracted': '<span class="matrix-pill pill-extracted"><i class="bi bi-box-seam-fill pop-anim"></i> Extracted</span>',
         'uploading': '<span class="matrix-pill pill-uploading"><i class="bi bi-cloud-arrow-up-fill float-anim"></i> Uploading</span>',
