@@ -44,6 +44,8 @@ deployment_state = {
     'step': None,
     'progress': 0,
     'logs': [],
+    'start_time': None,
+    'end_time': None,
     'current_file': None,
     'total_files': 0,
     'completed_files': 0,
@@ -1189,6 +1191,8 @@ def run_deployment(config, selected_wars, steps):
     """Run deployment in background thread"""
     deployment_state['running'] = True
     deployment_state['cancelled'] = False
+    deployment_state['start_time'] = time.time()
+    deployment_state['end_time'] = None
     deployment_state['logs'] = []
     deployment_state['progress'] = 0
     
@@ -1226,10 +1230,13 @@ def run_deployment(config, selected_wars, steps):
         log_message(f"Deployment failed: {str(e)}", 'error')
     finally:
         deployment_state['running'] = False
+        deployment_state['end_time'] = time.time()
         deployment_state['step'] = None
         broadcast_message('complete', {
             'cancelled': deployment_state.get('cancelled', False),
-            'failed_wars': deployment_state.get('failed_wars', [])
+            'failed_wars': deployment_state.get('failed_wars', []),
+            'start_time': deployment_state.get('start_time'),
+            'end_time': deployment_state.get('end_time')
         })
 
 
@@ -1756,7 +1763,7 @@ def start_deployment():
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
-    """Get deployment status"""
+    """Get deployment status including active runtime timestamps and logs"""
     return jsonify({
         'running': deployment_state['running'],
         'step': deployment_state['step'],
@@ -1765,6 +1772,9 @@ def get_status():
         'completed': deployment_state['completed_files'],
         'total': deployment_state['total_files'],
         'file_sizes': deployment_state['file_sizes'],
+        'start_time': deployment_state.get('start_time'),
+        'end_time': deployment_state.get('end_time'),
+        'logs': deployment_state.get('logs', []),
         'failed_wars': deployment_state.get('failed_wars', [])
     })
 
@@ -1819,15 +1829,20 @@ def retry_failed():
         def run_retry():
             deployment_state['running'] = True
             deployment_state['cancelled'] = False
+            deployment_state['start_time'] = time.time()
+            deployment_state['end_time'] = None
             try:
                 deploy_step2(config, wars_to_retry)
             except Exception as e:
                 log_message(f"Retry failed: {str(e)}", 'error')
             finally:
                 deployment_state['running'] = False
+                deployment_state['end_time'] = time.time()
                 broadcast_message('complete', {
                     'cancelled': deployment_state.get('cancelled', False),
-                    'failed_wars': deployment_state.get('failed_wars', [])
+                    'failed_wars': deployment_state.get('failed_wars', []),
+                    'start_time': deployment_state.get('start_time'),
+                    'end_time': deployment_state.get('end_time')
                 })
 
         thread = threading.Thread(target=run_retry)

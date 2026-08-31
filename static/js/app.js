@@ -11,8 +11,8 @@ let lastBytesTransferred = 0;
 let lastSpeedCalcTime = 0;
 let smoothedSpeed = 0;
 
-function startDeploymentTimer() {
-    deploymentStartTime = Date.now();
+function startDeploymentTimer(startTimeEpoch) {
+    deploymentStartTime = startTimeEpoch ? Number(startTimeEpoch) : Date.now();
     lastBytesTransferred = 0;
     lastSpeedCalcTime = Date.now();
     smoothedSpeed = 0;
@@ -22,13 +22,13 @@ function startDeploymentTimer() {
     const speedEl = document.getElementById('transfer-speed');
     const totalEl = document.getElementById('transferred-total');
     
-    if (timeEl) timeEl.textContent = '00:00';
+    updateDeploymentTimer();
     if (statusEl) {
         statusEl.textContent = 'Running';
         statusEl.className = 'telemetry-badge-mini active';
     }
-    if (speedEl) speedEl.textContent = 'Calculating...';
-    if (totalEl) totalEl.textContent = '0 MB';
+    if (speedEl && !isDeploying) speedEl.textContent = 'Calculating...';
+    if (totalEl && !isDeploying) totalEl.textContent = '0 MB';
     
     if (deploymentTimerInterval) clearInterval(deploymentTimerInterval);
     deploymentTimerInterval = setInterval(updateDeploymentTimer, 1000);
@@ -226,15 +226,62 @@ function handleMessage(message) {
         case 'ping':
             // Keepalive, ignore
             break;
-        case 'status':
-            // Initial status
-            if (message.data.running) {
+        case 'status': {
+            // Restore full state on connect / page refresh
+            const state = message.data;
+            if (!state) break;
+            
+            // 1. Restore historical logs if any exist
+            if (state.logs && Array.isArray(state.logs) && state.logs.length > 0) {
+                const logsContainer = document.getElementById('logs-container');
+                if (logsContainer && logsContainer.children.length <= 1) {
+                    logsContainer.innerHTML = '';
+                    state.logs.forEach(entry => {
+                        const logEntry = document.createElement('div');
+                        logEntry.className = 'log-entry log-' + (entry.level || 'info');
+                        logEntry.innerHTML = `
+                            <span class="log-time">${escapeHtml(entry.timestamp || '')}</span>
+                            <span class="log-message">${escapeHtml(entry.message || '')}</span>
+                        `;
+                        logsContainer.appendChild(logEntry);
+                    });
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                }
+            }
+
+            // 2. Restore file sizes & matrix stream
+            if (state.file_sizes && typeof state.file_sizes === 'object' && Object.keys(state.file_sizes).length > 0) {
+                updateFileSizes(state.file_sizes);
+                updateTransferThroughput(state.file_sizes);
+            }
+
+            // 3. Restore progress & active artifact
+            if (state.progress !== undefined) {
+                updateProgress(state.progress, state.current_file, state.completed_files, state.total_files);
+            }
+
+            // 4. Handle running state & stopwatch elapsed time
+            if (state.running) {
                 isDeploying = true;
-                if (!deploymentStartTime) startDeploymentTimer();
+                const startEpoch = state.start_time ? state.start_time * 1000 : Date.now();
+                startDeploymentTimer(startEpoch);
                 updateStatus('Deploying...', 'bg-warning pulse');
                 setButtonsDisabled(true);
+            } else if (state.start_time && state.end_time) {
+                // Preserved previous run duration
+                const totalSecs = Math.max(0, Math.floor(state.end_time - state.start_time));
+                const mins = String(Math.floor(totalSecs / 60)).padStart(2, '0');
+                const secs = String(totalSecs % 60).padStart(2, '0');
+                const timeEl = document.getElementById('elapsed-time');
+                const statusEl = document.getElementById('elapsed-status');
+                if (timeEl) timeEl.textContent = `${mins}:${secs}`;
+                if (statusEl) {
+                    statusEl.textContent = 'Complete';
+                    statusEl.className = 'telemetry-badge-mini complete';
+                }
             }
             break;
+        }
     }
 }
 
