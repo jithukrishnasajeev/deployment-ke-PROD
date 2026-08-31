@@ -42,6 +42,8 @@ deployment_state = {
     'running': False,
     'cancelled': False,
     'step': None,
+    'steps': [],
+    'selected_wars': [],
     'progress': 0,
     'logs': [],
     'start_time': None,
@@ -1271,6 +1273,8 @@ def run_deployment(config, selected_wars, steps):
     """Run deployment in background thread"""
     deployment_state['running'] = True
     deployment_state['cancelled'] = False
+    deployment_state['selected_wars'] = list(selected_wars)
+    deployment_state['steps'] = list(steps)
     deployment_state['start_time'] = time.time()
     deployment_state['end_time'] = None
     deployment_state['logs'] = []
@@ -1843,10 +1847,12 @@ def start_deployment():
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
-    """Get deployment status including active runtime timestamps and logs"""
+    """Get deployment status including active runtime timestamps, selected wars, and logs"""
     return jsonify({
         'running': deployment_state['running'],
         'step': deployment_state['step'],
+        'steps': deployment_state.get('steps', []),
+        'selected_wars': deployment_state.get('selected_wars', []),
         'progress': deployment_state['progress'],
         'current_file': deployment_state['current_file'],
         'completed': deployment_state['completed_files'],
@@ -1909,6 +1915,8 @@ def retry_failed():
         def run_retry():
             deployment_state['running'] = True
             deployment_state['cancelled'] = False
+            deployment_state['selected_wars'] = list(wars_to_retry)
+            deployment_state['steps'] = [2]
             deployment_state['start_time'] = time.time()
             deployment_state['end_time'] = None
             try:

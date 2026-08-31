@@ -265,7 +265,17 @@ function handleMessage(message) {
                 updateProgress(state.progress, state.current_file, state.completed_files, state.total_files);
             }
 
-            // 4. Handle running state & stopwatch elapsed time
+            // 4. Restore selected WAR files checkboxes if active run or saved
+            if (state.selected_wars && Array.isArray(state.selected_wars) && state.selected_wars.length > 0) {
+                document.querySelectorAll('.war-item input[type="checkbox"]').forEach(cb => {
+                    cb.checked = state.selected_wars.includes(cb.value);
+                });
+                try {
+                    localStorage.setItem('iflight-selected-wars', JSON.stringify(state.selected_wars));
+                } catch (e) {}
+            }
+
+            // 5. Handle running state & stopwatch elapsed time
             if (state.running) {
                 isDeploying = true;
                 const startEpoch = state.start_time ? state.start_time * 1000 : Date.now();
@@ -294,6 +304,9 @@ let currentDownloadSource = 'ssh';
 
 function setDownloadSource(source, isUserAction = false) {
     currentDownloadSource = source;
+    try {
+        localStorage.setItem('iflight-download-source', source);
+    } catch (e) {}
     const sshPill = document.getElementById('src-pill-ssh');
     const s3Pill = document.getElementById('src-pill-s3');
     const sshContainer = document.getElementById('source-ssh-container');
@@ -427,8 +440,9 @@ async function loadConfiguration() {
         document.getElementById('source-server').value = data.source_server;
         
         // Populate S3 details
-        if (data.download_source) {
-            setDownloadSource(data.download_source);
+        const savedSource = localStorage.getItem('iflight-download-source') || data.download_source;
+        if (savedSource) {
+            setDownloadSource(savedSource);
         }
         if (data.s3_bucket) {
             const bucketDisp = document.getElementById('s3-bucket-display');
@@ -455,8 +469,10 @@ async function loadConfiguration() {
         const targetServerInput = document.getElementById('target-server');
         const targetUsernameInput = document.getElementById('target-username');
         
-        targetServerInput.value = data.target_server;
-        targetUsernameInput.value = data.target_username || '';
+        const savedTargetServer = localStorage.getItem('iflight-target-server');
+        const savedTargetUsername = localStorage.getItem('iflight-target-username');
+        targetServerInput.value = savedTargetServer || data.target_server;
+        targetUsernameInput.value = savedTargetUsername !== null ? savedTargetUsername : (data.target_username || '');
         
         // Add indicator for multiple routes
         if (data.total_routes && data.total_routes > 1) {
@@ -474,12 +490,41 @@ async function loadConfiguration() {
         // Set parallel download checkbox state & threads count
         const parallelDownloadEl = document.getElementById('parallel-download');
         const parallelThreadsEl = document.getElementById('parallel-threads');
-        if (parallelDownloadEl && data.parallel_downloads !== undefined) {
-            parallelDownloadEl.checked = !!data.parallel_downloads;
+        const savedParallel = localStorage.getItem('iflight-parallel-downloads');
+        const savedThreads = localStorage.getItem('iflight-parallel-threads');
+
+        if (parallelDownloadEl) {
+            if (savedParallel !== null) {
+                parallelDownloadEl.checked = (savedParallel === 'true');
+            } else if (data.parallel_downloads !== undefined) {
+                parallelDownloadEl.checked = !!data.parallel_downloads;
+            }
             toggleParallelThreads(parallelDownloadEl.checked);
+            parallelDownloadEl.addEventListener('change', function() {
+                localStorage.setItem('iflight-parallel-downloads', this.checked);
+            });
         }
-        if (parallelThreadsEl && data.max_threads) {
-            parallelThreadsEl.value = String(data.max_threads);
+        if (parallelThreadsEl) {
+            if (savedThreads !== null) {
+                parallelThreadsEl.value = savedThreads;
+            } else if (data.max_threads) {
+                parallelThreadsEl.value = String(data.max_threads);
+            }
+            parallelThreadsEl.addEventListener('change', function() {
+                localStorage.setItem('iflight-parallel-threads', this.value);
+            });
+        }
+
+        // Handle bypass network checkbox
+        const bypassEl = document.getElementById('bypass-network');
+        if (bypassEl) {
+            const savedBypass = localStorage.getItem('iflight-bypass-network');
+            if (savedBypass !== null) {
+                bypassEl.checked = (savedBypass === 'true');
+            }
+            bypassEl.addEventListener('change', function() {
+                localStorage.setItem('iflight-bypass-network', this.checked);
+            });
         }
         
         // Load WAR files list
@@ -516,8 +561,9 @@ async function loadConfiguration() {
             }
         });
         
-        // Add change listeners for target fields to highlight when modified
+        // Add change listeners for target fields to highlight and persist when modified
         targetServerInput.addEventListener('input', function() {
+            localStorage.setItem('iflight-target-server', this.value);
             if (this.value !== data.target_server) {
                 this.style.borderColor = '#fbbf24';
                 this.style.boxShadow = '0 0 0 3px rgba(251, 191, 36, 0.2)';
@@ -528,6 +574,7 @@ async function loadConfiguration() {
         });
         
         targetUsernameInput.addEventListener('input', function() {
+            localStorage.setItem('iflight-target-username', this.value);
             if (this.value !== (data.target_username || '')) {
                 this.style.borderColor = '#fbbf24';
                 this.style.boxShadow = '0 0 0 3px rgba(251, 191, 36, 0.2)';
@@ -543,8 +590,15 @@ async function loadConfiguration() {
     }
 }
 
-// Load WAR files checkboxes
-function loadWarFilesList(warFiles) {
+function saveSelectedWarsToStorage() {
+    try {
+        const selected = getSelectedWars();
+        localStorage.setItem('iflight-selected-wars', JSON.stringify(selected));
+    } catch (e) {}
+}
+
+// Load WAR files checkboxes with memory of previous selections
+function loadWarFilesList(warFiles, activeSelectedWars) {
     const container = document.getElementById('war-files-list');
     container.innerHTML = '';
     
@@ -553,16 +607,32 @@ function loadWarFilesList(warFiles) {
         return;
     }
     
+    let savedSelections = null;
+    if (activeSelectedWars && Array.isArray(activeSelectedWars) && activeSelectedWars.length > 0) {
+        savedSelections = activeSelectedWars;
+    } else {
+        try {
+            const stored = localStorage.getItem('iflight-selected-wars');
+            if (stored) savedSelections = JSON.parse(stored);
+        } catch (e) {}
+    }
+    
     warFiles.forEach((warFile, index) => {
         const warName = warFile.replace('iflight-', '').replace('-webapp', '').toUpperCase();
+        const isChecked = savedSelections ? savedSelections.includes(warFile) : true;
         const div = document.createElement('div');
         div.className = 'war-item';
         div.innerHTML = `
-            <input type="checkbox" id="war-${index}" value="${warFile}" checked>
+            <input type="checkbox" id="war-${index}" value="${warFile}" ${isChecked ? 'checked' : ''}>
             <label for="war-${index}">${warName}</label>
         `;
+        const cb = div.querySelector('input');
+        cb.addEventListener('change', saveSelectedWarsToStorage);
         container.appendChild(div);
     });
+    
+    // Save current effective selection to storage
+    saveSelectedWarsToStorage();
     
     // Reset filter to All when list is reloaded
     filterWarList('all');
@@ -662,10 +732,12 @@ async function fetchWarsFromSource() {
 // Select/Deselect all WAR files
 function selectAll() {
     document.querySelectorAll('.war-item input[type="checkbox"]').forEach(cb => cb.checked = true);
+    saveSelectedWarsToStorage();
 }
 
 function deselectAll() {
     document.querySelectorAll('.war-item input[type="checkbox"]').forEach(cb => cb.checked = false);
+    saveSelectedWarsToStorage();
 }
 
 // Run individual step
