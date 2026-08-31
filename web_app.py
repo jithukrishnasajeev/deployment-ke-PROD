@@ -531,6 +531,38 @@ def deploy_step1(config, selected_wars):
             log_message(f"📂 S3 URI Prefix: s3://{bucket}/{s3_prefix}", 'info')
             log_message(f"⚙ Download Mode: {'Parallel (' + str(max_workers) + ' worker threads)' if parallel and max_workers > 1 else 'Sequential single worker'}", 'info')
             
+            # Fetch all S3 file sizes upfront in 1 fast command
+            s3_sizes = {}
+            try:
+                aws_bin = get_aws_cmd()
+                proc = subprocess.run([aws_bin, "s3", "ls", f"s3://{bucket}/{s3_prefix}", "--profile", profile], capture_output=True, text=True, timeout=10)
+                if proc.returncode == 0:
+                    for line in proc.stdout.splitlines():
+                        parts = line.strip().split()
+                        if len(parts) >= 4 and parts[3].endswith('.war'):
+                            try:
+                                s3_sizes[parts[3]] = int(parts[2])
+                            except ValueError:
+                                pass
+            except Exception:
+                pass
+                
+            # Pre-populate ALL selected files into deployment_state['file_sizes']
+            for war_prefix in selected_wars:
+                war_file = f"{war_prefix}-{config.VERSION}.war"
+                war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
+                f_size = s3_sizes.get(war_file, 0)
+                update_file_size(
+                    war_prefix, war_name,
+                    source_size=f_size,
+                    total_size=f_size,
+                    transferred=0,
+                    transfer_progress=0,
+                    status='pending',
+                    broadcast=False
+                )
+            broadcast_message('file_size', deployment_state['file_sizes'])
+            
             def download_one_war(item):
                 idx, war_prefix = item
                 if deployment_state.get('cancelled'):
@@ -542,7 +574,7 @@ def deploy_step1(config, selected_wars):
                 s3_uri = f"s3://{bucket}/{s3_prefix}{war_file}"
                 local_war = os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file)
                 
-                s3_total_size = get_s3_file_size(s3_uri, profile)
+                s3_total_size = s3_sizes.get(war_file, 0) or get_s3_file_size(s3_uri, profile)
                 
                 with download_lock:
                     log_message(f"[{idx}/{len(selected_wars)}] Downloading from S3: {war_name}", 'info')
@@ -550,8 +582,6 @@ def deploy_step1(config, selected_wars):
                         war_prefix, war_name,
                         source_size=s3_total_size if s3_total_size > 0 else 0,
                         total_size=s3_total_size if s3_total_size > 0 else 0,
-                        transferred=0,
-                        transfer_progress=0,
                         status='downloading',
                         broadcast=False
                     )
@@ -649,6 +679,45 @@ def deploy_step1(config, selected_wars):
             
             log_message(f"⚙ Download Mode: {'Parallel (' + str(max_workers) + ' worker threads)' if parallel and max_workers > 1 else 'Sequential single SSH session'}", 'info')
 
+            # Fetch all remote WAR file sizes upfront in 1 SSH call
+            ssh_sizes = {}
+            try:
+                source_port = getattr(config, 'SOURCE_PORT', 22)
+                init_ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, config.SOURCE_PASSWORD, source_port)
+                init_ssh.connect(max_retries=1)
+                stdin, stdout, stderr = init_ssh.exec_command(f"stat -c '%s %n' {source_wars_dir}/*.war 2>/dev/null || ls -l {source_wars_dir}/*.war 2>/dev/null")
+                out_lines = stdout.read().decode().splitlines()
+                init_ssh.close()
+                for line in out_lines:
+                    parts = line.strip().split()
+                    if len(parts) >= 2 and parts[0].isdigit():
+                        fname = os.path.basename(parts[1])
+                        ssh_sizes[fname] = int(parts[0])
+                    elif len(parts) >= 5 and parts[-1].endswith('.war'):
+                        fname = os.path.basename(parts[-1])
+                        try:
+                            ssh_sizes[fname] = int(parts[4])
+                        except ValueError:
+                            pass
+            except Exception:
+                pass
+
+            # Pre-populate ALL selected files into deployment_state['file_sizes']
+            for war_prefix in selected_wars:
+                war_file = f"{war_prefix}-{config.VERSION}.war"
+                war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
+                f_size = ssh_sizes.get(war_file, 0)
+                update_file_size(
+                    war_prefix, war_name,
+                    source_size=f_size,
+                    total_size=f_size,
+                    transferred=0,
+                    transfer_progress=0,
+                    status='pending',
+                    broadcast=False
+                )
+            broadcast_message('file_size', deployment_state['file_sizes'])
+
             def download_one_war(item):
                 idx, war_prefix = item
                 if deployment_state.get('cancelled'):
@@ -660,7 +729,7 @@ def deploy_step1(config, selected_wars):
                 
                 with download_lock:
                     log_message(f"[{idx}/{len(selected_wars)}] Downloading: {war_name}", 'info')
-                    update_file_size(war_prefix, war_name, status='processing', broadcast=False)
+                    update_file_size(war_prefix, war_name, status='downloading', broadcast=False)
                     tracker.file_started(war_prefix, war_name)
                 
                 source_port = getattr(config, 'SOURCE_PORT', 22)
@@ -802,8 +871,15 @@ def deploy_step2(config, selected_wars):
             
             if local_file:
                 local_size = os.path.getsize(local_file)
-                if war_prefix not in deployment_state['file_sizes'] or deployment_state['file_sizes'][war_prefix].get('source_size', 0) == 0:
-                    update_file_size(war_prefix, war_name, source_size=local_size, total_size=local_size, broadcast=False)
+                update_file_size(
+                    war_prefix, war_name,
+                    source_size=local_size,
+                    total_size=local_size,
+                    transferred=0,
+                    transfer_progress=0,
+                    status='pending',
+                    broadcast=False
+                )
             else:
                 missing_files.append(war_file)
         
@@ -812,6 +888,8 @@ def deploy_step2(config, selected_wars):
             for f in missing_files:
                 log_message(f"  • {f}", 'error')
             return False
+            
+        broadcast_message('file_size', deployment_state['file_sizes'])
             
         deployment_state['total_files'] = len(selected_wars)
         deployment_state['completed_files'] = 0
@@ -1130,6 +1208,8 @@ def deploy_step3(config, selected_wars):
                 target_size = get_remote_file_size(ssh, source_war_path)
                 if target_size > 0:
                     update_file_size(war_prefix, war_name, target_size=target_size, status='extracted', broadcast=False)
+        
+        broadcast_message('file_size', deployment_state['file_sizes'])
         
         war_map = dict(config.WAR_MAPPINGS)
         tracker = StepProgressTracker(total_files=len(selected_wars))

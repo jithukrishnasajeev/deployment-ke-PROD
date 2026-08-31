@@ -145,10 +145,15 @@ function updateTransferThroughput(sizes) {
     }
     
     const totalEl = document.getElementById('transferred-total');
-    if (totalEl && totalTransferred > 0) {
+    if (totalEl) {
         const transStr = formatSize(totalTransferred);
-        const totStr = totalTarget > 0 ? formatSize(totalTarget) : '';
-        totalEl.textContent = totStr ? `${transStr} / ${totStr}` : transStr;
+        if (totalTarget > 0) {
+            totalEl.textContent = `${transStr} / ${formatSize(totalTarget)}`;
+        } else if (totalTransferred > 0) {
+            totalEl.textContent = transStr;
+        } else {
+            totalEl.textContent = '0 MB';
+        }
     }
 }
 
