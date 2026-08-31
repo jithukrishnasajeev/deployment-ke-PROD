@@ -404,16 +404,19 @@ async function loadConfiguration() {
         
         config = data;
         
-        // Populate form fields - don't overwrite version if user has entered one
+        // Check localStorage for last entered version
+        const savedVersion = localStorage.getItem('iflight-last-version');
+        const effectiveVersion = savedVersion || data.version;
+        
         const versionInput = document.getElementById('version-input');
-        if (!versionInput.value || versionInput.value === versionInput.placeholder) {
-            versionInput.value = data.version;
+        if (versionInput) {
+            versionInput.value = effectiveVersion;
         }
         
         // Update header version badge
         const headerVersion = document.getElementById('header-version-text');
         if (headerVersion) {
-            headerVersion.textContent = data.version;
+            headerVersion.textContent = effectiveVersion;
         }
         
         document.getElementById('source-server').value = data.source_server;
@@ -477,19 +480,34 @@ async function loadConfiguration() {
         // Load WAR files list
         loadWarFilesList(data.war_files);
         
-        // Add version change listener to highlight when modified
+        // Add version change listener to remember last version & highlight when modified
         versionInput.addEventListener('input', function() {
-            // Sync with header badge
-            if (headerVersion) {
-                headerVersion.textContent = this.value || 'v?.?.?';
+            const v = this.value.trim();
+            if (v) {
+                localStorage.setItem('iflight-last-version', v);
+                if (headerVersion) {
+                    headerVersion.textContent = v;
+                }
             }
             
             if (this.value !== data.version) {
-                this.style.borderColor = '#fbbf24';
-                this.style.boxShadow = '0 0 0 3px rgba(251, 191, 36, 0.2)';
+                this.style.borderColor = 'var(--accent)';
+                this.style.boxShadow = '0 0 0 3px var(--accent-bg)';
             } else {
                 this.style.borderColor = '';
                 this.style.boxShadow = '';
+            }
+        });
+
+        versionInput.addEventListener('change', function() {
+            const v = this.value.trim();
+            if (v) {
+                localStorage.setItem('iflight-last-version', v);
+                fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ version: v })
+                }).catch(() => {});
             }
         });
         
@@ -588,6 +606,10 @@ async function fetchWarsFromSource() {
         alert('Please enter a version number first.');
         return;
     }
+    
+    localStorage.setItem('iflight-last-version', version);
+    const headerVersion = document.getElementById('header-version-text');
+    if (headerVersion) headerVersion.textContent = version;
     
     const fetchBtn = document.getElementById('fetch-wars-btn');
     const fetchIcon = fetchBtn.querySelector('i');
@@ -742,6 +764,11 @@ function getSelectedWars() {
 
 // Execute deployment with given parameters
 async function executeDeployment(selectedWars, steps, version) {
+    if (version) {
+        localStorage.setItem('iflight-last-version', version);
+        const headerVersion = document.getElementById('header-version-text');
+        if (headerVersion) headerVersion.textContent = version;
+    }
     const bypassNetwork = document.getElementById('bypass-network').checked;
     const parallelDownloadEl = document.getElementById('parallel-download');
     const parallelDownload = parallelDownloadEl ? parallelDownloadEl.checked : false;
