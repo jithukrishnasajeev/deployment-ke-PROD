@@ -1382,6 +1382,7 @@ def get_config():
             'local_path': config.LOCAL_DOWNLOAD_PATH,
             'war_files': [prefix for prefix, _ in config.WAR_MAPPINGS],
             'total_routes': len(target_routes),
+            'target_routes': target_routes,
             'parallel_downloads': getattr(config, 'PARALLEL_DOWNLOADS', False),
             'max_threads': getattr(config, 'MAX_THREADS', 4),
             'download_source': getattr(config, 'DOWNLOAD_SOURCE', 'ssh'),
@@ -1835,6 +1836,71 @@ def retry_failed():
 
         return jsonify({'success': True, 'retrying': wars_to_retry})
 
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/test-routes', methods=['GET', 'POST'])
+def test_target_routes():
+    """Test all PAM routes concurrently with latency measurement"""
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), 'deployment_config.json')
+        config = load_config_from_json(config_path)
+        target_routes = getattr(config, 'TARGET_ROUTES', [])
+        if not target_routes:
+            target_routes = [{'host': config.TARGET_SERVER, 'username': config.TARGET_USER}]
+            
+        results = []
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        def check_one_route(idx, route):
+            host = route['host']
+            username = route['username']
+            pam_host = host.split('.')[0]
+            target_ip = username.split('%')[-1] if '%' in username else host
+            start_t = time.time()
+            try:
+                ssh = SSHClient(host, username, config.TARGET_PASSWORD)
+                ssh.connect(max_retries=1)
+                latency_ms = max(1, int((time.time() - start_t) * 1000))
+                ssh.close()
+                return {
+                    'index': idx,
+                    'host': host,
+                    'pam_host': pam_host,
+                    'target_ip': target_ip,
+                    'username': username,
+                    'status': 'online',
+                    'latency_ms': latency_ms,
+                    'error': None
+                }
+            except Exception as e:
+                latency_ms = max(1, int((time.time() - start_t) * 1000))
+                return {
+                    'index': idx,
+                    'host': host,
+                    'pam_host': pam_host,
+                    'target_ip': target_ip,
+                    'username': username,
+                    'status': 'offline',
+                    'latency_ms': latency_ms,
+                    'error': str(e)[:60]
+                }
+        
+        with ThreadPoolExecutor(max_workers=max(1, len(target_routes))) as executor:
+            futures = [executor.submit(check_one_route, idx, route) for idx, route in enumerate(target_routes)]
+            for future in as_completed(futures):
+                results.append(future.result())
+                
+        results.sort(key=lambda r: r['index'])
+        online_count = sum(1 for r in results if r['status'] == 'online')
+        
+        return jsonify({
+            'success': True,
+            'total_routes': len(target_routes),
+            'online_count': online_count,
+            'routes': results
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

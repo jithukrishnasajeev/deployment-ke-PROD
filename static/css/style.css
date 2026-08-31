@@ -1172,54 +1172,86 @@ body.config-fullscreen-mode .passwords-grid {
 .telemetry-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    gap: 8px;
 }
 .telemetry-card {
     background: var(--bg-card);
     border: 1px solid var(--border-default);
     border-radius: var(--r-md);
-    padding: 10px 12px;
+    padding: 8px 10px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 9px;
     transition: all var(--dur) var(--ease);
     box-shadow: var(--shadow-sm);
+    min-height: 52px;
 }
 .telemetry-card:hover {
     border-color: var(--border-bright);
     background: var(--bg-card-hover);
 }
 .telemetry-card-icon {
-    width: 32px; height: 32px;
+    width: 30px; height: 30px;
     border-radius: var(--r-sm);
     display: flex; align-items: center; justify-content: center;
-    font-size: 15px;
+    font-size: 14px;
     flex-shrink: 0;
 }
 .active-file-icon { background: var(--accent-bg); color: var(--accent); }
 .count-icon       { background: var(--gold-bg); color: var(--gold); }
+.timer-icon       { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+.speed-icon       { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
 
 .telemetry-card-info {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    flex: 1;
+    gap: 1px;
 }
 .telemetry-card-label {
-    font-size: 10px;
+    font-size: 9.5px;
     color: var(--text-muted);
     font-family: var(--font-display);
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
 }
 .telemetry-card-val {
     font-family: var(--font-mono);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+.telemetry-val-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.telemetry-badge-mini {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    padding: 1px 5px;
+    border-radius: var(--r-full);
+    background: var(--bg-input);
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle);
+    white-space: nowrap;
+    line-height: 1.2;
+}
+.telemetry-badge-mini.active {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border-color: var(--border-accent);
+}
+.telemetry-badge-mini.complete {
+    background: var(--success-bg);
+    color: var(--success);
+    border-color: rgba(52, 211, 153, 0.3);
 }
 
 /* File Sizes Matrix */
@@ -1228,22 +1260,53 @@ body.config-fullscreen-mode .passwords-grid {
     flex-direction: column;
     gap: 8px;
     flex: 1;
-    min-height: 260px;
+    min-height: 220px;
+}
+.section-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 .section-title {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 11.5px;
+    font-size: 11px;
     color: var(--text-secondary);
     display: flex; align-items: center; gap: 6px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
-.section-title i { color: var(--accent); font-size: 13px; }
+.section-title i { color: var(--accent); font-size: 12px; }
+
+.mini-btn-test-routes {
+    font-size: 10px;
+    font-weight: 600;
+    font-family: var(--font-display);
+    padding: 3px 8px;
+    border-radius: var(--r-sm);
+    background: var(--accent-bg);
+    color: var(--accent);
+    border: 1px solid var(--border-accent);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all var(--dur) var(--ease);
+}
+.mini-btn-test-routes:hover {
+    background: var(--accent);
+    color: #0f172a;
+    box-shadow: var(--shadow-glow);
+}
+.mini-btn-test-routes:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 
 .files-list {
     flex: 1;
-    min-height: 220px;
+    min-height: 180px;
     overflow-y: auto;
     background: var(--bg-input);
     border: 1px solid var(--border-subtle);
@@ -1261,23 +1324,23 @@ body.config-fullscreen-mode .passwords-grid {
     align-items: center;
     justify-content: center;
     flex: 1;
-    min-height: 180px;
-    padding: 24px 16px;
+    min-height: 160px;
+    padding: 20px 16px;
     color: var(--text-muted);
-    font-size: 11.5px;
+    font-size: 11px;
     gap: 8px;
     text-align: center;
     background: var(--bg-card);
     border: 1px dashed var(--border-default);
     border-radius: var(--r-md);
 }
-.empty-state i { font-size: 24px; color: var(--text-dim); }
+.empty-state i { font-size: 22px; color: var(--text-dim); }
 
 .file-card {
     background: var(--bg-card);
     border: 1px solid var(--border-default);
     border-radius: var(--r-md);
-    padding: 10px 12px;
+    padding: 9px 11px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -1293,7 +1356,7 @@ body.config-fullscreen-mode .passwords-grid {
 }
 .file-card-name {
     font-family: var(--font-mono);
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-primary);
     display: flex; align-items: center; gap: 6px;
@@ -1310,7 +1373,7 @@ body.config-fullscreen-mode .passwords-grid {
     border-top: 1px solid var(--border-subtle);
 }
 
-/* Connection Status */
+/* Connection Status & Multi-Route Health Matrix */
 .connection-section {
     display: flex;
     flex-direction: column;
@@ -1323,29 +1386,126 @@ body.config-fullscreen-mode .passwords-grid {
     background: var(--bg-card);
     border: 1px solid var(--border-default);
     border-radius: var(--r-md);
-    padding: 10px 12px;
+    padding: 8px 10px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     transition: all var(--dur) var(--ease);
     box-shadow: var(--shadow-sm);
 }
 .connection-item:hover { border-color: var(--border-bright); background: var(--bg-card-hover); }
 
 .conn-icon {
-    width: 32px; height: 32px;
+    width: 28px; height: 28px;
     border-radius: var(--r-sm);
     background: var(--accent-bg);
     color: var(--accent);
     display: flex; align-items: center; justify-content: center;
-    font-size: 14px; flex-shrink: 0;
+    font-size: 13px; flex-shrink: 0;
 }
 .conn-info { display: flex; flex-direction: column; gap: 1px; }
-.conn-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
-.conn-status { font-size: 11px; font-weight: 600; }
+.conn-label { font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+.conn-status { font-size: 10.5px; font-weight: 600; }
 .conn-status.unknown { color: var(--text-muted); }
 .conn-status.success  { color: var(--success); }
 .conn-status.failed   { color: var(--danger); }
+
+/* Distributed PAM Route Health Matrix */
+.routes-health-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-md);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: var(--shadow-sm);
+}
+.routes-health-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: var(--font-display);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.routes-health-title i { color: #38bdf8; margin-right: 4px; }
+.routes-health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 6px;
+}
+.route-chip {
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-sm);
+    padding: 5px 7px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    transition: all var(--dur) var(--ease);
+}
+.route-chip:hover {
+    border-color: var(--border-default);
+    background: var(--bg-card-hover);
+}
+.route-chip-info {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.route-chip-host {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.route-chip-ip {
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.route-chip-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+    transition: all var(--dur) var(--ease);
+}
+.route-chip.online .route-chip-status {
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+}
+.route-chip.offline .route-chip-status {
+    background: var(--danger);
+    box-shadow: 0 0 6px var(--danger);
+}
+.route-chip.active .route-chip-status {
+    background: #38bdf8;
+    box-shadow: 0 0 8px #38bdf8;
+    animation: pulse 1s infinite;
+}
+.route-chip.testing .route-chip-status {
+    background: #fbbf24;
+    box-shadow: 0 0 6px #fbbf24;
+    animation: pulse 0.8s infinite;
+}
+.route-chip-latency {
+    font-size: 8.5px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+}
 
 /* ─── RESPONSIVE ────────────────────────────────────────────────── */
 @media (max-width: 1200px) {

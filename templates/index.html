@@ -608,9 +608,9 @@
                     </div>
                 </div>
 
-                <!-- Telemetry Metrics 2x2 Grid -->
+                <!-- Telemetry Metrics (4 Cards in 2x2 Grid) -->
                 <div class="telemetry-grid">
-                    <div class="telemetry-card">
+                    <div class="telemetry-card" title="Currently transferring or active artifact">
                         <div class="telemetry-card-icon active-file-icon">
                             <i class="bi bi-file-earmark-code"></i>
                         </div>
@@ -620,13 +620,39 @@
                         </div>
                     </div>
 
-                    <div class="telemetry-card">
+                    <div class="telemetry-card" title="Total completed files / Total selected files">
                         <div class="telemetry-card-icon count-icon">
                             <i class="bi bi-layers-half"></i>
                         </div>
                         <div class="telemetry-card-info">
                             <span class="telemetry-card-label">Files Processed</span>
                             <span class="telemetry-card-val"><span id="completed-count">0</span> / <span id="total-count">0</span></span>
+                        </div>
+                    </div>
+
+                    <div class="telemetry-card" title="Elapsed runtime and execution state">
+                        <div class="telemetry-card-icon timer-icon">
+                            <i class="bi bi-stopwatch-fill"></i>
+                        </div>
+                        <div class="telemetry-card-info">
+                            <span class="telemetry-card-label">Elapsed Time</span>
+                            <div class="telemetry-val-group">
+                                <span class="telemetry-card-val" id="elapsed-time">00:00</span>
+                                <span class="telemetry-badge-mini" id="elapsed-status">Standby</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="telemetry-card" title="Real-time transfer speed & throughput">
+                        <div class="telemetry-card-icon speed-icon">
+                            <i class="bi bi-speedometer2"></i>
+                        </div>
+                        <div class="telemetry-card-info">
+                            <span class="telemetry-card-label">Transfer Speed</span>
+                            <div class="telemetry-val-group">
+                                <span class="telemetry-card-val" id="transfer-speed">0.0 MB/s</span>
+                                <span class="telemetry-badge-mini" id="transferred-total">0 MB</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -649,11 +675,16 @@
                     </div>
                 </div>
 
-                <!-- Connection Status -->
+                <!-- Connection & Route Health Section -->
                 <div class="connection-section">
-                    <div class="section-title">
-                        <i class="bi bi-shield-check"></i>
-                        <span>Node Status</span>
+                    <div class="section-title-row">
+                        <div class="section-title">
+                            <i class="bi bi-shield-check"></i>
+                            <span>Node & Route Matrix</span>
+                        </div>
+                        <button type="button" class="mini-btn-test-routes" id="btn-test-routes" onclick="testTargetRoutes()" title="Ping and verify all PAM routes">
+                            <i class="bi bi-broadcast"></i> Test Routes
+                        </button>
                     </div>
                     <div class="connection-grid">
                         <div class="connection-item" id="source-status">
@@ -673,6 +704,15 @@
                                 <span class="conn-label">Target Server</span>
                                 <span class="conn-status unknown">Not tested</span>
                             </div>
+                        </div>
+                    </div>
+                    <!-- Distributed PAM Routes Health Grid -->
+                    <div id="target-routes-status-container" class="routes-health-container" style="display: none;">
+                        <div class="routes-health-header">
+                            <span class="routes-health-title"><i class="bi bi-diagram-3-fill"></i> PAM Load-Balancing Routes (<span id="routes-count-badge">0</span>)</span>
+                        </div>
+                        <div id="routes-health-grid" class="routes-health-grid">
+                            <!-- Dynamic route pills rendered from config -->
                         </div>
                     </div>
                 </div>

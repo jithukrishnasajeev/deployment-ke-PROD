@@ -4,6 +4,168 @@ let config = null;
 let isDeploying = false;
 let fileSizes = {};
 
+// Telemetry: Live Deployment Stopwatch & Throughput Tracker
+let deploymentStartTime = null;
+let deploymentTimerInterval = null;
+let lastBytesTransferred = 0;
+let lastSpeedCalcTime = 0;
+let smoothedSpeed = 0;
+
+function startDeploymentTimer() {
+    deploymentStartTime = Date.now();
+    lastBytesTransferred = 0;
+    lastSpeedCalcTime = Date.now();
+    smoothedSpeed = 0;
+    
+    const timeEl = document.getElementById('elapsed-time');
+    const statusEl = document.getElementById('elapsed-status');
+    const speedEl = document.getElementById('transfer-speed');
+    const totalEl = document.getElementById('transferred-total');
+    
+    if (timeEl) timeEl.textContent = '00:00';
+    if (statusEl) {
+        statusEl.textContent = 'Running';
+        statusEl.className = 'telemetry-badge-mini active';
+    }
+    if (speedEl) speedEl.textContent = 'Calculating...';
+    if (totalEl) totalEl.textContent = '0 MB';
+    
+    if (deploymentTimerInterval) clearInterval(deploymentTimerInterval);
+    deploymentTimerInterval = setInterval(updateDeploymentTimer, 1000);
+}
+
+function updateDeploymentTimer() {
+    if (!deploymentStartTime) return;
+    const elapsedSeconds = Math.floor((Date.now() - deploymentStartTime) / 1000);
+    const timeEl = document.getElementById('elapsed-time');
+    if (timeEl) {
+        const mins = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+        const secs = String(elapsedSeconds % 60).padStart(2, '0');
+        timeEl.textContent = `${mins}:${secs}`;
+    }
+}
+
+function stopDeploymentTimer(isSuccess = true, isCancelled = false) {
+    if (deploymentTimerInterval) {
+        clearInterval(deploymentTimerInterval);
+        deploymentTimerInterval = null;
+    }
+    
+    const timeEl = document.getElementById('elapsed-time');
+    const statusEl = document.getElementById('elapsed-status');
+    const speedEl = document.getElementById('transfer-speed');
+    
+    if (deploymentStartTime) {
+        const totalSecs = Math.floor((Date.now() - deploymentStartTime) / 1000);
+        const mins = Math.floor(totalSecs / 60);
+        const secs = totalSecs % 60;
+        const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        
+        if (statusEl) {
+            if (isCancelled) {
+                statusEl.textContent = 'Cancelled';
+                statusEl.className = 'telemetry-badge-mini';
+            } else if (isSuccess) {
+                statusEl.textContent = `Done (${durationStr})`;
+                statusEl.className = 'telemetry-badge-mini complete';
+            } else {
+                statusEl.textContent = `Failed (${durationStr})`;
+                statusEl.className = 'telemetry-badge-mini';
+            }
+        }
+    }
+    
+    if (speedEl) {
+        speedEl.textContent = 'Standby';
+    }
+}
+
+function resetDeploymentTimer() {
+    if (deploymentTimerInterval) {
+        clearInterval(deploymentTimerInterval);
+        deploymentTimerInterval = null;
+    }
+    deploymentStartTime = null;
+    lastBytesTransferred = 0;
+    lastSpeedCalcTime = 0;
+    smoothedSpeed = 0;
+    
+    const timeEl = document.getElementById('elapsed-time');
+    const statusEl = document.getElementById('elapsed-status');
+    const speedEl = document.getElementById('transfer-speed');
+    const totalEl = document.getElementById('transferred-total');
+    
+    if (timeEl) timeEl.textContent = '00:00';
+    if (statusEl) {
+        statusEl.textContent = 'Standby';
+        statusEl.className = 'telemetry-badge-mini';
+    }
+    if (speedEl) speedEl.textContent = '0.0 MB/s';
+    if (totalEl) totalEl.textContent = '0 MB';
+}
+
+function updateTransferThroughput(sizes) {
+    if (!sizes || typeof sizes !== 'object') return;
+    
+    let totalTransferred = 0;
+    let totalTarget = 0;
+    
+    Object.values(sizes).forEach(info => {
+        totalTransferred += (info.transferred || 0);
+        totalTarget += (info.total_size || info.source_size || 0);
+    });
+    
+    const now = Date.now();
+    const dt = (now - (lastSpeedCalcTime || now)) / 1000;
+    
+    if (dt >= 0.4 && lastBytesTransferred > 0) {
+        const deltaBytes = Math.max(0, totalTransferred - lastBytesTransferred);
+        const instantSpeed = deltaBytes / Math.max(0.1, dt); // bytes per sec
+        
+        smoothedSpeed = smoothedSpeed === 0 ? instantSpeed : (smoothedSpeed * 0.65 + instantSpeed * 0.35);
+        
+        const speedEl = document.getElementById('transfer-speed');
+        if (speedEl) {
+            if (smoothedSpeed >= 1024 * 1024) {
+                speedEl.textContent = `${(smoothedSpeed / (1024 * 1024)).toFixed(1)} MB/s`;
+            } else if (smoothedSpeed >= 1024) {
+                speedEl.textContent = `${(smoothedSpeed / 1024).toFixed(0)} KB/s`;
+            } else if (smoothedSpeed > 0) {
+                speedEl.textContent = `${smoothedSpeed.toFixed(0)} B/s`;
+            } else {
+                speedEl.textContent = '0.0 MB/s';
+            }
+        }
+        
+        lastBytesTransferred = totalTransferred;
+        lastSpeedCalcTime = now;
+    } else if (lastBytesTransferred === 0 && totalTransferred > 0) {
+        lastBytesTransferred = totalTransferred;
+        lastSpeedCalcTime = now;
+    }
+    
+    const totalEl = document.getElementById('transferred-total');
+    if (totalEl && totalTransferred > 0) {
+        const transStr = formatSize(totalTransferred);
+        const totStr = totalTarget > 0 ? formatSize(totalTarget) : '';
+        totalEl.textContent = totStr ? `${transStr} / ${totStr}` : transStr;
+    }
+}
+
+function highlightActiveRouteFromLog(msg) {
+    if (!msg || typeof msg !== 'string') return;
+    if (msg.includes(' -> ')) {
+        document.querySelectorAll('.route-chip').forEach(chip => {
+            const host = chip.querySelector('.route-chip-host')?.textContent || '';
+            const ip = chip.querySelector('.route-chip-ip')?.textContent || '';
+            if ((host && msg.includes(host)) || (ip && msg.includes(ip.split(' ')[0]))) {
+                chip.classList.add('active');
+                setTimeout(() => chip.classList.remove('active'), 4000);
+            }
+        });
+    }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadConfiguration();
@@ -44,16 +206,19 @@ function handleMessage(message) {
     switch (message.type) {
         case 'log':
             addLog(message.data.level, message.data.message, message.data.timestamp);
+            highlightActiveRouteFromLog(message.data.message);
             break;
         case 'progress':
             updateProgress(message.data.progress, message.data.current_file, 
                           message.data.completed, message.data.total);
             if (message.data.file_sizes) {
                 updateFileSizes(message.data.file_sizes);
+                updateTransferThroughput(message.data.file_sizes);
             }
             break;
         case 'file_size':
             updateFileSizes(message.data);
+            updateTransferThroughput(message.data);
             break;
         case 'complete':
             handleDeploymentComplete(message.data);
@@ -65,6 +230,7 @@ function handleMessage(message) {
             // Initial status
             if (message.data.running) {
                 isDeploying = true;
+                if (!deploymentStartTime) startDeploymentTimer();
                 updateStatus('Deploying...', 'bg-warning pulse');
                 setButtonsDisabled(true);
             }
@@ -241,6 +407,11 @@ async function loadConfiguration() {
         if (data.total_routes && data.total_routes > 1) {
             targetServerInput.placeholder = `Primary route (${data.total_routes} routes configured)`;
             targetServerInput.title = `Using ${data.total_routes} PAM routes for load balancing. See Configuration tab for details.`;
+        }
+        
+        // Render PAM load-balancing route matrix
+        if (data.target_routes && Array.isArray(data.target_routes)) {
+            renderTargetRoutesMatrix(data.target_routes);
         }
         
         document.getElementById('local-path').value = data.local_path;
@@ -603,6 +774,7 @@ async function executeDeployment(selectedWars, steps, version) {
         }
         
         isDeploying = true;
+        startDeploymentTimer();
         const stepText = steps.length === 1 ? `Step ${steps[0]}` : 'Full Deploy';
         updateStatus(`${stepText}...`, 'bg-warning pulse');
         setButtonsDisabled(true);
@@ -852,6 +1024,7 @@ function handleDeploymentComplete(data) {
     
     if (data.cancelled) {
         updateStatus('Cancelled', 'bg-warning');
+        stopDeploymentTimer(false, true);
         if (progressSection) progressSection.classList.remove('active');
     } else {
         // Check for failed wars and show retry button if any
@@ -867,8 +1040,10 @@ function handleDeploymentComplete(data) {
 
         if (failedWars.length > 0) {
             updateStatus(`Done (${failedWars.length} failed)`, 'bg-warning');
+            stopDeploymentTimer(false, false);
         } else {
             updateStatus('Completed', 'bg-success');
+            stopDeploymentTimer(true, false);
             createConfetti();
         }
         if (progressSection) {
@@ -1100,6 +1275,93 @@ function updateConnectionStatus(source, target) {
     }
 }
 
+// Render Distributed PAM Target Routes Matrix
+function renderTargetRoutesMatrix(routes) {
+    const container = document.getElementById('target-routes-status-container');
+    const grid = document.getElementById('routes-health-grid');
+    const countBadge = document.getElementById('routes-count-badge');
+    
+    if (!container || !grid) return;
+    
+    if (!routes || routes.length <= 1) {
+        container.style.display = 'none';
+        return;
+    }
+    
+    container.style.display = 'flex';
+    if (countBadge) countBadge.textContent = routes.length;
+    
+    grid.innerHTML = routes.map((r, idx) => {
+        const host = r.host || '';
+        const username = r.username || '';
+        const pamHost = host.split('.')[0];
+        const targetIp = username.includes('%') ? username.split('%').pop() : host;
+        
+        return `
+            <div class="route-chip" id="route-chip-${idx}" title="${escapeHtml(host)} -> ${escapeHtml(username)}">
+                <div class="route-chip-info">
+                    <span class="route-chip-host">${escapeHtml(pamHost)}</span>
+                    <span class="route-chip-ip">${escapeHtml(targetIp)}</span>
+                </div>
+                <div class="route-chip-status-wrap">
+                    <span class="route-chip-status" id="route-status-${idx}"></span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Test All PAM Target Routes Concurrently
+async function testTargetRoutes() {
+    const btn = document.getElementById('btn-test-routes');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat bi-spin"></i> Testing...';
+    }
+    
+    document.querySelectorAll('.route-chip').forEach(chip => {
+        chip.className = 'route-chip testing';
+    });
+    
+    addLog('info', '═══════════════════════════════════════════════════════════');
+    addLog('info', '🔍 Testing latency and connectivity of all PAM routes...');
+    addLog('info', '═══════════════════════════════════════════════════════════');
+    
+    try {
+        const response = await fetch('/api/test-routes', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.routes) {
+            data.routes.forEach(r => {
+                const chip = document.getElementById(`route-chip-${r.index}`);
+                if (chip) {
+                    chip.className = `route-chip ${r.status}`;
+                    const ipSpan = chip.querySelector('.route-chip-ip');
+                    if (ipSpan) {
+                        ipSpan.textContent = r.status === 'online' ? `${r.target_ip} (${r.latency_ms}ms)` : `${r.target_ip} (offline)`;
+                    }
+                }
+                const level = r.status === 'online' ? 'success' : 'error';
+                const icon = r.status === 'online' ? '✓' : '✗';
+                addLog(level, `  ${icon} Route [${r.index + 1}] ${r.pam_host} -> ${r.target_ip}: ${r.status.toUpperCase()} (${r.latency_ms}ms)`);
+            });
+            
+            addLog(data.online_count === data.total_routes ? 'success' : 'warning', 
+                `✓ PAM Route Health Summary: ${data.online_count}/${data.total_routes} routes online`);
+        }
+    } catch (e) {
+        addLog('error', '✗ Failed to test PAM routes: ' + e.message);
+        document.querySelectorAll('.route-chip').forEach(chip => {
+            chip.className = 'route-chip offline';
+        });
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-broadcast"></i> Test Routes';
+        }
+    }
+}
+
 // Format file size
 function formatSize(bytes) {
     if (bytes === 0) return '0 B';
@@ -1287,6 +1549,9 @@ function clearLogs() {
     if (progressSection) {
         progressSection.classList.remove('active', 'progress-complete', 'complete');
     }
+    
+    // Reset telemetry metrics stopwatch & speed
+    resetDeploymentTimer();
 }
 
 // Utility: Escape HTML
