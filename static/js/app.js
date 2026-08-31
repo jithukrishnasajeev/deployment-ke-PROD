@@ -1077,7 +1077,7 @@ function createConfetti() {
     }
 }
 
-// Update file sizes display with modern high-density matrix grid (in-place DOM updates)
+// Update file sizes display with sleek horizontal telemetry stream rows
 function updateFileSizes(sizes) {
     if (!sizes || typeof sizes !== 'object') return;
     fileSizes = sizes;
@@ -1091,7 +1091,7 @@ function updateFileSizes(sizes) {
             container.innerHTML = `
                 <div class="empty-state">
                     <i class="bi bi-inbox"></i>
-                    <span>Run deployment to monitor WAR sizes & transfer matrix</span>
+                    <span>Run deployment to monitor WAR sizes & transfer telemetry</span>
                 </div>
             `;
         }
@@ -1108,7 +1108,7 @@ function updateFileSizes(sizes) {
     let completedCount = 0;
     
     entries.forEach(([prefix, info]) => {
-        const cardId = `matrix-tile-${prefix.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        const cardId = `matrix-row-${prefix.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
         let card = document.getElementById(cardId);
         
         let cleanName = (info.name || prefix).replace(/^iflight-/, '').replace(/-webapp.*$/, '').replace(/[-_]/g, '_').toUpperCase();
@@ -1129,65 +1129,73 @@ function updateFileSizes(sizes) {
         const percent = Math.min(100, Math.max(0, calcPercent)).toFixed(0);
         
         let statusClass = 'pending';
-        let badgeHtml = '<span class="tile-pill pill-pending"><i class="bi bi-circle"></i> Wait</span>';
+        let badgeHtml = '<span class="matrix-pill pill-pending"><i class="bi bi-clock"></i> Pending</span>';
         
         if (isTransferring) {
             statusClass = 'transferring';
             const actionIcon = info.status === 'uploading' ? 'bi-cloud-arrow-up' : 'bi-cloud-arrow-down';
-            badgeHtml = `<span class="tile-pill pill-active"><i class="bi ${actionIcon}"></i> ${percent}%</span>`;
+            const actionLabel = info.status === 'uploading' ? 'Uploading' : 'Downloading';
+            badgeHtml = `<span class="matrix-pill pill-active"><i class="bi ${actionIcon}"></i> ${actionLabel}</span>`;
         } else if (isDone) {
             statusClass = 'completed';
-            badgeHtml = `<span class="tile-pill pill-done"><i class="bi bi-check2"></i> ${targetSize !== '-' ? targetSize : 'OK'}</span>`;
+            const doneLabel = info.status === 'deployed' ? 'Deployed' : (info.status === 'extracted' ? 'Extracted' : 'Downloaded');
+            badgeHtml = `<span class="matrix-pill pill-done"><i class="bi bi-check-circle-fill"></i> ${doneLabel}</span>`;
         } else if (isError) {
             statusClass = 'error';
-            badgeHtml = '<span class="tile-pill pill-error"><i class="bi bi-x-circle"></i> Err</span>';
+            badgeHtml = '<span class="matrix-pill pill-error"><i class="bi bi-x-circle-fill"></i> Error</span>';
         }
         
-        const tooltip = `${prefix} | Status: ${info.status || 'pending'} | Src: ${sourceSize} | Tgt: ${targetSize}`;
+        const tooltip = `${prefix} | Status: ${info.status || 'pending'} | Source: ${sourceSize} | Target: ${targetSize}`;
         
         if (!card) {
             card = document.createElement('div');
             card.id = cardId;
-            card.className = `matrix-tile ${statusClass}`;
+            card.className = `matrix-row ${statusClass}`;
             card.title = tooltip;
             card.innerHTML = `
-                <div class="matrix-tile-header">
-                    <div class="matrix-tile-name">
+                <div class="matrix-row-main">
+                    <div class="matrix-row-artifact">
                         <i class="bi bi-file-earmark-code-fill"></i>
-                        <span class="tile-name-text">${escapeHtml(cleanName)}</span>
+                        <span class="artifact-name">${escapeHtml(cleanName)}</span>
                     </div>
-                    <div class="matrix-tile-badge">${badgeHtml}</div>
+                    <div class="matrix-row-flow">
+                        <span class="flow-size source-size">${sourceSize}</span>
+                        <i class="bi bi-arrow-right flow-arrow"></i>
+                        <span class="flow-size target-size">${targetSize}</span>
+                    </div>
+                    <div class="matrix-row-status">${badgeHtml}</div>
                 </div>
-                <div class="matrix-tile-flow">
-                    <span class="flow-src" title="Source size"><i class="bi bi-cloud-arrow-down"></i> <span class="src-val">${sourceSize}</span></span>
-                    <i class="bi bi-arrow-right flow-arrow"></i>
-                    <span class="flow-tgt" title="Target size"><i class="bi bi-cloud-arrow-up"></i> <span class="tgt-val">${targetSize}</span></span>
-                </div>
-                <div class="matrix-tile-progress-bar" style="display: ${isTransferring ? 'block' : 'none'};">
-                    <div class="matrix-progress-fill" style="width: ${percent}%;"></div>
+                <div class="matrix-row-progress" style="display: ${isTransferring ? 'flex' : 'none'};">
+                    <div class="matrix-progress-track">
+                        <div class="matrix-progress-fill" style="width: ${percent}%;"></div>
+                    </div>
+                    <span class="matrix-progress-num">${percent}%</span>
                 </div>
             `;
             container.appendChild(card);
         } else {
             // Update in place smoothly without destroying DOM
-            card.className = `matrix-tile ${statusClass}`;
+            card.className = `matrix-row ${statusClass}`;
             card.title = tooltip;
             
-            const badgeContainer = card.querySelector('.matrix-tile-badge');
+            const badgeContainer = card.querySelector('.matrix-row-status');
             if (badgeContainer) badgeContainer.innerHTML = badgeHtml;
             
-            const srcVal = card.querySelector('.src-val');
+            const srcVal = card.querySelector('.source-size');
             if (srcVal && srcVal.textContent !== sourceSize) srcVal.textContent = sourceSize;
             
-            const tgtVal = card.querySelector('.tgt-val');
+            const tgtVal = card.querySelector('.target-size');
             if (tgtVal && tgtVal.textContent !== targetSize) tgtVal.textContent = targetSize;
             
-            const progressBar = card.querySelector('.matrix-tile-progress-bar');
+            const progressRow = card.querySelector('.matrix-row-progress');
             const progressFill = card.querySelector('.matrix-progress-fill');
-            if (progressBar && progressFill) {
-                progressBar.style.display = isTransferring ? 'block' : 'none';
+            const progressNum = card.querySelector('.matrix-progress-num');
+            
+            if (progressRow) {
+                progressRow.style.display = isTransferring ? 'flex' : 'none';
                 if (isTransferring) {
-                    progressFill.style.width = `${percent}%`;
+                    if (progressFill) progressFill.style.width = `${percent}%`;
+                    if (progressNum && progressNum.textContent !== `${percent}%`) progressNum.textContent = `${percent}%`;
                 }
             }
         }
