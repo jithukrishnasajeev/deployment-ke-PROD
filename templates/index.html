@@ -238,18 +238,23 @@
                     <span>Bypass network checks</span>
                 </label>
                 <div class="download-mode-group">
-                    <label class="bypass-checkbox" title="Use multiple SSH connections to download files in parallel. Off = single session (safer, recommended for servers with connection limits)">
+                    <label class="bypass-checkbox" title="Use parallel worker threads for high-speed downloads and distributed uploads. Off = sequential single session (safer, recommended for servers with connection limits)">
                         <input type="checkbox" id="parallel-download" onchange="toggleParallelThreads(this.checked)">
                         <i class="bi bi-layers-half" style="font-size:12px; margin-right:4px;"></i>
-                        <span>Parallel download</span>
+                        <span>Parallel transfers</span>
                     </label>
                     <div id="parallel-threads-container" class="parallel-threads-badge" style="display: none;">
                         <i class="bi bi-cpu-fill" style="font-size: 11px; color: #38bdf8;"></i>
-                        <select id="parallel-threads" class="threads-select" title="Select number of parallel download threads">
+                        <select id="parallel-threads" class="threads-select" title="Select number of parallel transfer threads">
+                            <option value="1">1 thread</option>
                             <option value="2">2 threads</option>
+                            <option value="3">3 threads</option>
                             <option value="4" selected>4 threads</option>
+                            <option value="5">5 threads</option>
                             <option value="6">6 threads</option>
+                            <option value="7">7 threads</option>
                             <option value="8">8 threads</option>
+                            <option value="9">9 threads</option>
                             <option value="10">10 threads</option>
                         </select>
                     </div>

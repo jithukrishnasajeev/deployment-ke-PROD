@@ -241,8 +241,10 @@ class DeploymentEngine:
             if target_war_prefixes:
                 mappings_to_process = [m for m in self.config.WAR_MAPPINGS if m[0] in target_war_prefixes]
 
-            max_workers = min(5, max(1, len(mappings_to_process)))
-            log(f"[INFO] Uploading across routes with {max_workers} threads...\n")
+            parallel = getattr(self.config, 'PARALLEL_DOWNLOADS', False)
+            configured_threads = getattr(self.config, 'MAX_THREADS', 4) if parallel else 1
+            max_workers = min(configured_threads, len(mappings_to_process)) if parallel else 1
+            log(f"[INFO] Uploading across routes with {max_workers} thread(s)...\n")
 
             self.failed_wars.clear()
             self.failed_routes.clear()

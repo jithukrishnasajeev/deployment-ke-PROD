@@ -83,7 +83,73 @@ def get_aws_cmd():
     return 'aws'
 
 
-def create_transfer_callback(war_prefix, war_name, total_size, operation='upload'):
+class StepProgressTracker:
+    """Thread-safe unified progress tracker for concurrent multi-file transfers."""
+    
+    def __init__(self, total_files: int, on_progress_callback=None):
+        self.total_files = max(1, total_files)
+        self.on_progress_callback = on_progress_callback
+        self.lock = threading.Lock()
+        self.completed_count = 0
+        self.active_file_progress = {}   # war_prefix -> fraction (0.0 to 1.0)
+        self.active_file_names = {}      # war_prefix -> display_name
+        self.last_broadcast_time = 0.0
+
+    def file_started(self, war_prefix: str, war_name: str):
+        with self.lock:
+            self.active_file_names[war_prefix] = war_name
+            self.active_file_progress[war_prefix] = 0.0
+            self._notify(force=True)
+
+    def file_progress(self, war_prefix: str, war_name: str, transferred: int, total: int):
+        with self.lock:
+            self.active_file_names[war_prefix] = war_name
+            frac = (transferred / total) if total > 0 else 0.0
+            self.active_file_progress[war_prefix] = min(0.999, max(0.0, frac))
+            self._notify(force=False)
+
+    def file_completed(self, war_prefix: str, war_name: str):
+        with self.lock:
+            self.active_file_progress.pop(war_prefix, None)
+            self.active_file_names.pop(war_prefix, None)
+            self.completed_count += 1
+            self._notify(force=True)
+
+    def file_failed(self, war_prefix: str, war_name: str):
+        with self.lock:
+            self.active_file_progress.pop(war_prefix, None)
+            self.active_file_names.pop(war_prefix, None)
+            self._notify(force=True)
+
+    def _notify(self, force: bool = False):
+        now = time.time()
+        if not force and (now - self.last_broadcast_time < 0.12):
+            return
+        
+        self.last_broadcast_time = now
+        sum_active = sum(self.active_file_progress.values())
+        overall_p = min(100.0, max(0.0, ((self.completed_count + sum_active) / self.total_files) * 100.0))
+        
+        if len(self.active_file_names) > 1:
+            names = sorted(self.active_file_names.values())
+            current_file_str = f"{len(names)} active ({', '.join(names)})"
+        elif len(self.active_file_names) == 1:
+            current_file_str = next(iter(self.active_file_names.values()))
+        else:
+            current_file_str = "-"
+
+        deployment_state['completed_files'] = self.completed_count
+        deployment_state['total_files'] = self.total_files
+        deployment_state['current_file'] = current_file_str
+        deployment_state['progress'] = overall_p
+
+        if self.on_progress_callback:
+            self.on_progress_callback(overall_p, current_file_str, self.completed_count, self.total_files)
+        else:
+            update_progress(overall_p, current_file_str, self.completed_count, self.total_files)
+
+
+def create_transfer_callback(war_prefix, war_name, total_size, operation='upload', tracker=None):
     """Create a callback function for file transfer progress with optimized throttling"""
     import time
     last_update = [0]  # Bytes transferred at last update
@@ -92,35 +158,27 @@ def create_transfer_callback(war_prefix, war_name, total_size, operation='upload
     def callback(transferred, total):
         current_time = time.time()
         
-        # Update only if: transferred >= 2MB since last update OR 1 second elapsed OR transfer complete
+        # Update only if: transferred >= 2MB since last update OR 0.5s elapsed OR transfer complete
         bytes_since_update = transferred - last_update[0]
         time_since_update = current_time - last_time[0]
         
-        if bytes_since_update >= 2097152 or time_since_update >= 1.0 or transferred == total:
+        if bytes_since_update >= 2097152 or time_since_update >= 0.5 or transferred == total:
             last_update[0] = transferred
             last_time[0] = current_time
             percent = (transferred / total * 100) if total > 0 else 0
             
             # Update file size info with transfer progress
-            if war_prefix not in deployment_state['file_sizes']:
-                deployment_state['file_sizes'][war_prefix] = {
-                    'name': war_name,
-                    'source_size': 0,
-                    'target_size': 0,
-                    'status': 'pending',
-                    'transfer_progress': 0,
-                    'transferred': 0
-                }
-            
-            deployment_state['file_sizes'][war_prefix].update({
-                'transfer_progress': percent,
-                'transferred': transferred,
-                'total_size': total,
-                'status': operation
-            })
-            
-            # Broadcast update (no logging to reduce overhead)
-            broadcast_message('file_size', deployment_state['file_sizes'])
+            update_file_size(
+                war_prefix, war_name,
+                total_size=total,
+                transferred=transferred,
+                transfer_progress=percent,
+                status=operation,
+                broadcast=(tracker is None)
+            )
+
+            if tracker:
+                tracker.file_progress(war_prefix, war_name, transferred, total)
 
             # CHECK FOR CANCELLATION
             if deployment_state.get('cancelled'):
@@ -162,7 +220,7 @@ def fast_sftp_download(sftp, remote_path, local_path, war_prefix, war_name, call
     return md5_hash.hexdigest()
 
 
-def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, use_scp=True):
+def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, use_scp=True, tracker=None):
     """Optimized upload with SCP or SFTP based on config"""
     file_size = os.path.getsize(local_path)
     
@@ -179,18 +237,22 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
             
             def scp_progress(filename, size, sent):
                 current_time = time.time()
-                if sent - transferred[0] >= 2097152 or current_time - last_update[0] >= 1.0 or sent == size:
+                if sent - transferred[0] >= 2097152 or current_time - last_update[0] >= 0.5 or sent == size:
                     transferred[0] = sent
                     last_update[0] = current_time
                     percent = (sent / size * 100) if size > 0 else 0
                     
-                    deployment_state['file_sizes'][war_prefix].update({
-                        'transfer_progress': percent,
-                        'transferred': sent,
-                        'total_size': size,
-                        'status': 'uploading'
-                    })
-                    broadcast_message('file_size', deployment_state['file_sizes'])
+                    update_file_size(
+                        war_prefix, war_name,
+                        total_size=size,
+                        transferred=sent,
+                        transfer_progress=percent,
+                        status='uploading',
+                        broadcast=(tracker is None)
+                    )
+                    
+                    if tracker:
+                        tracker.file_progress(war_prefix, war_name, sent, size)
 
                     # CHECK FOR CANCELLATION
                     if deployment_state.get('cancelled'):
@@ -217,7 +279,7 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
     # Standard SFTP upload (stable fallback)
     sftp = ssh.get_sftp()
     log_message(f"  ⬆ Uploading {format_size(file_size)}...", 'info')
-    callback = create_transfer_callback(war_prefix, war_name, file_size, 'uploading')
+    callback = create_transfer_callback(war_prefix, war_name, file_size, 'uploading', tracker=tracker)
     
     start_time = time.time()
     
@@ -229,7 +291,7 @@ def sftp_upload_optimized(ssh, local_path, remote_path, war_prefix, war_name, us
     log_message(f"  ✓ Uploaded in {elapsed:.1f}s ({speed:.1f} MB/s)", 'success')
 
 
-def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, use_scp=True):
+def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, use_scp=True, callback=None, tracker=None):
     """Optimized download using prefetch + streaming MD5 (SCP fallback available)"""
     
     # Get file size for progress tracking
@@ -249,18 +311,22 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
             
             def scp_progress(filename, size, sent):
                 current_time = time.time()
-                if sent - transferred[0] >= 2097152 or current_time - last_update[0] >= 1.0 or sent == size:
+                if sent - transferred[0] >= 2097152 or current_time - last_update[0] >= 0.5 or sent == size:
                     transferred[0] = sent
                     last_update[0] = current_time
                     percent = (sent / size * 100) if size > 0 else 0
                     
-                    deployment_state['file_sizes'][war_prefix].update({
-                        'transfer_progress': percent,
-                        'transferred': sent,
-                        'total_size': size,
-                        'status': 'downloading'
-                    })
-                    broadcast_message('file_size', deployment_state['file_sizes'])
+                    update_file_size(
+                        war_prefix, war_name,
+                        total_size=size,
+                        transferred=sent,
+                        transfer_progress=percent,
+                        status='downloading',
+                        broadcast=(tracker is None)
+                    )
+                    
+                    if tracker:
+                        tracker.file_progress(war_prefix, war_name, sent, size)
             
             start_time = time.time()
             
@@ -281,7 +347,8 @@ def sftp_download_optimized(ssh, remote_path, local_path, war_prefix, war_name, 
     
     # Fast SFTP download with prefetch + streaming MD5
     log_message(f"  ⬇ [PROTOCOL: SFTP] Downloading {format_size(file_size)} (prefetch mode)...", 'info')
-    callback = create_transfer_callback(war_prefix, war_name, file_size, 'downloading')
+    if not callback:
+        callback = create_transfer_callback(war_prefix, war_name, file_size, 'downloading', tracker=tracker)
     
     start_time = time.time()
     local_md5 = fast_sftp_download(sftp, remote_path, local_path, war_prefix, war_name, callback)
@@ -322,28 +389,34 @@ def log_message(message, level='info', file_info=None):
         print(f"[{timestamp}] [{level.upper()}] {message.encode('ascii', 'backslashreplace').decode('ascii')}")
 
 
-def update_progress(progress, current_file=None):
+def update_progress(progress, current_file=None, completed=None, total=None):
     """Update progress and broadcast to clients"""
     deployment_state['progress'] = progress
-    if current_file:
+    if current_file is not None:
         deployment_state['current_file'] = current_file
+    if completed is not None:
+        deployment_state['completed_files'] = completed
+    if total is not None:
+        deployment_state['total_files'] = total
     broadcast_message('progress', {
         'progress': progress,
-        'current_file': current_file,
+        'current_file': deployment_state['current_file'],
         'completed': deployment_state['completed_files'],
         'total': deployment_state['total_files'],
         'file_sizes': deployment_state['file_sizes']
     })
 
 
-def update_file_size(war_prefix, war_name, source_size=None, target_size=None, status=None, total_size=None, transferred=None, transfer_progress=None):
+def update_file_size(war_prefix, war_name, source_size=None, target_size=None, status=None, total_size=None, transferred=None, transfer_progress=None, broadcast=True):
     """Update and broadcast file size info"""
     if war_prefix not in deployment_state['file_sizes']:
         deployment_state['file_sizes'][war_prefix] = {
             'name': war_name,
             'source_size': 0,
             'target_size': 0,
-            'status': 'pending'
+            'status': 'pending',
+            'transfer_progress': 0,
+            'transferred': 0
         }
     
     if source_size is not None:
@@ -359,7 +432,8 @@ def update_file_size(war_prefix, war_name, source_size=None, target_size=None, s
     if transfer_progress is not None:
         deployment_state['file_sizes'][war_prefix]['transfer_progress'] = transfer_progress
     
-    broadcast_message('file_size', deployment_state['file_sizes'])
+    if broadcast:
+        broadcast_message('file_size', deployment_state['file_sizes'])
 
 
 def get_remote_file_size(ssh, file_path):
@@ -439,7 +513,7 @@ def deploy_step1(config, selected_wars):
         max_workers = getattr(config, 'MAX_THREADS', 4) if parallel else 1
         use_scp = getattr(config, 'USE_SCP', True)
         
-        completed_count = [0]
+        tracker = StepProgressTracker(total_files=len(selected_wars))
         errors = []
         download_lock = threading.Lock()
         source_wars_dir = f"{config.SOURCE_PATH}Wars"
@@ -453,6 +527,7 @@ def deploy_step1(config, selected_wars):
             log_message(f"☁️ Download Source: AWS S3 Bucket ({bucket})", 'success')
             log_message(f"👤 AWS SSO Profile: {profile}", 'info')
             log_message(f"📂 S3 URI Prefix: s3://{bucket}/{s3_prefix}", 'info')
+            log_message(f"⚙ Download Mode: {'Parallel (' + str(max_workers) + ' worker threads)' if parallel and max_workers > 1 else 'Sequential single worker'}", 'info')
             
             def download_one_war(item):
                 idx, war_prefix = item
@@ -475,8 +550,10 @@ def deploy_step1(config, selected_wars):
                         total_size=s3_total_size if s3_total_size > 0 else 0,
                         transferred=0,
                         transfer_progress=0,
-                        status='downloading'
+                        status='downloading',
+                        broadcast=False
                     )
+                    tracker.file_started(war_prefix, war_name)
                     if s3_total_size > 0:
                         log_message(f"  📦 {war_name}: S3 Object Size {format_size(s3_total_size)}", 'info')
                 
@@ -485,7 +562,7 @@ def deploy_step1(config, selected_wars):
                     cmd = [aws_bin, "s3", "cp", s3_uri, local_war, "--profile", profile]
                     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
                     
-                    last_update = [0]
+                    last_update = [0.0]
                     transferred_ref = [0]
                     
                     def stream_reader():
@@ -516,11 +593,11 @@ def deploy_step1(config, selected_wars):
                         
                         file_bytes = os.path.getsize(local_war) if os.path.exists(local_war) else 0
                         current_bytes = max(file_bytes, transferred_ref[0])
-                        tot = s3_total_size if s3_total_size > 0 else current_bytes
+                        tot = s3_total_size if s3_total_size > 0 else (current_bytes or 1)
                         percent = min(99.9, (current_bytes / tot * 100)) if tot > 0 else 50.0
                         
                         now = time.time()
-                        if now - last_update[0] >= 0.1:
+                        if now - last_update[0] >= 0.15:
                             last_update[0] = now
                             with download_lock:
                                 update_file_size(
@@ -529,11 +606,10 @@ def deploy_step1(config, selected_wars):
                                     total_size=tot,
                                     transferred=current_bytes,
                                     transfer_progress=percent,
-                                    status='downloading'
+                                    status='downloading',
+                                    broadcast=False
                                 )
-                                current_file_frac = (current_bytes / tot) if tot > 0 else 0
-                                overall_p = ((completed_count[0] + current_file_frac) / len(selected_wars)) * 100
-                                update_progress(overall_p, war_name)
+                                tracker.file_progress(war_prefix, war_name, current_bytes, tot)
                         time.sleep(0.05)
                         
                     reader_thread.join(timeout=2)
@@ -552,18 +628,18 @@ def deploy_step1(config, selected_wars):
                             total_size=local_size,
                             transferred=local_size,
                             transfer_progress=100,
-                            status='downloaded'
+                            status='downloaded',
+                            broadcast=False
                         )
-                        completed_count[0] += 1
-                        deployment_state['completed_files'] = completed_count[0]
-                        update_progress((completed_count[0] / len(selected_wars)) * 100, war_name)
+                        tracker.file_completed(war_prefix, war_name)
                         log_message(f"  ✓ {war_name}: Downloaded & Verified {format_size(local_size)} from S3", 'success')
                     return True
                 except Exception as e:
                     with download_lock:
                         errors.append(f"{war_prefix}: {str(e)}")
                         log_message(f"  ✗ {war_name} S3 download failed: {str(e)}", 'error')
-                        update_file_size(war_prefix, war_name, status='error')
+                        update_file_size(war_prefix, war_name, status='error', broadcast=False)
+                        tracker.file_failed(war_prefix, war_name)
                     return False
         else:
             if direct_war:
@@ -582,7 +658,8 @@ def deploy_step1(config, selected_wars):
                 
                 with download_lock:
                     log_message(f"[{idx}/{len(selected_wars)}] Downloading: {war_name}", 'info')
-                    update_file_size(war_prefix, war_name, status='processing')
+                    update_file_size(war_prefix, war_name, status='processing', broadcast=False)
+                    tracker.file_started(war_prefix, war_name)
                 
                 source_port = getattr(config, 'SOURCE_PORT', 22)
                 ssh = SSHClient(config.SOURCE_SERVER, config.SOURCE_USER, config.SOURCE_PASSWORD, source_port)
@@ -593,12 +670,13 @@ def deploy_step1(config, selected_wars):
                     source_war_size = get_remote_file_size(ssh, remote_war)
                     
                     with download_lock:
-                        update_file_size(war_prefix, war_name, source_size=source_war_size)
+                        update_file_size(war_prefix, war_name, source_size=source_war_size, total_size=source_war_size, broadcast=False)
                         log_message(f"  📦 {war_name}: Source WAR {format_size(source_war_size)}", 'info')
                     
                     if direct_war:
                         local_war = os.path.join(config.LOCAL_DOWNLOAD_PATH, war_file)
-                        local_md5 = sftp_download_optimized(ssh, remote_war, local_war, war_prefix, war_name, use_scp)
+                        callback = create_transfer_callback(war_prefix, war_name, source_war_size, 'downloading', tracker=tracker)
+                        local_md5 = sftp_download_optimized(ssh, remote_war, local_war, war_prefix, war_name, use_scp, callback=callback, tracker=tracker)
                         
                         with download_lock:
                             log_message(f"  🔐 {war_name}: Verifying MD5...", 'info')
@@ -610,10 +688,10 @@ def deploy_step1(config, selected_wars):
                         with download_lock:
                             if remote_md5 and local_md5 == remote_md5:
                                 log_message(f"  ✓ {war_name}: Integrity verified", 'success')
-                                update_file_size(war_prefix, war_name, status='downloaded')
+                                update_file_size(war_prefix, war_name, status='downloaded', transfer_progress=100, broadcast=False)
                             else:
                                 log_message(f"  ⚠ {war_name}: Checksum mismatch!", 'warning')
-                                update_file_size(war_prefix, war_name, status='warning')
+                                update_file_size(war_prefix, war_name, status='warning', transfer_progress=100, broadcast=False)
                     else:
                         remote_tar = f"/tmp/{tar_file}_{threading.current_thread().ident}"
                         local_tar = os.path.join(config.LOCAL_DOWNLOAD_PATH, tar_file)
@@ -626,7 +704,9 @@ def deploy_step1(config, selected_wars):
                         )
                         stdout.channel.recv_exit_status()
                         
-                        local_md5 = sftp_download_optimized(ssh, remote_tar, local_tar, war_prefix, war_name, use_scp)
+                        tar_size = get_remote_file_size(ssh, remote_tar)
+                        callback = create_transfer_callback(war_prefix, war_name, tar_size, 'downloading', tracker=tracker)
+                        local_md5 = sftp_download_optimized(ssh, remote_tar, local_tar, war_prefix, war_name, use_scp, callback=callback, tracker=tracker)
                         remote_md5 = get_remote_md5(ssh, remote_tar)
                         ssh.exec_command(f"rm -f '{remote_tar}'")
                         
@@ -636,22 +716,21 @@ def deploy_step1(config, selected_wars):
                         with download_lock:
                             if remote_md5 and local_md5 == remote_md5:
                                 log_message(f"  ✓ {war_name}: Integrity verified", 'success')
-                                update_file_size(war_prefix, war_name, status='downloaded')
+                                update_file_size(war_prefix, war_name, status='downloaded', transfer_progress=100, broadcast=False)
                             else:
                                 log_message(f"  ⚠ {war_name}: Checksum mismatch!", 'warning')
-                                update_file_size(war_prefix, war_name, status='warning')
+                                update_file_size(war_prefix, war_name, status='warning', transfer_progress=100, broadcast=False)
                     
                     with download_lock:
-                        completed_count[0] += 1
-                        deployment_state['completed_files'] = completed_count[0]
-                        update_progress(completed_count[0] / len(selected_wars) * 100, war_name)
+                        tracker.file_completed(war_prefix, war_name)
                     
                     return True
                 except Exception as e:
                     with download_lock:
                         errors.append(f"{war_prefix}: {str(e)}")
                         log_message(f"  ✗ {war_prefix} download failed: {str(e)}", 'error')
-                        update_file_size(war_prefix, war_name, status='error')
+                        update_file_size(war_prefix, war_name, status='error', broadcast=False)
+                        tracker.file_failed(war_prefix, war_name)
                     return False
                 finally:
                     ssh.close()
@@ -675,7 +754,7 @@ def deploy_step1(config, selected_wars):
 
         log_message("═" * 50, 'info')
         log_message("✓ STEP 1 COMPLETED!", 'success')
-        log_message(f"📊 Downloaded {completed_count[0]}/{len(selected_wars)} files", 'info')
+        log_message(f"📊 Downloaded {tracker.completed_count}/{len(selected_wars)} files", 'info')
         return len(errors) == 0
         
     except Exception as e:
@@ -722,7 +801,7 @@ def deploy_step2(config, selected_wars):
             if local_file:
                 local_size = os.path.getsize(local_file)
                 if war_prefix not in deployment_state['file_sizes'] or deployment_state['file_sizes'][war_prefix].get('source_size', 0) == 0:
-                    update_file_size(war_prefix, war_name, source_size=local_size)
+                    update_file_size(war_prefix, war_name, source_size=local_size, total_size=local_size, broadcast=False)
             else:
                 missing_files.append(war_file)
         
@@ -771,19 +850,27 @@ def deploy_step2(config, selected_wars):
         dead_route_lock = threading.Lock()
         # ─────────────────────────────────────────────────────────────────────
 
-        # Each thread creates the extract dir itself — no fragile pre-connection needed
-        log_message(f"  🔗 Connecting to primary node for initial directory setup...", 'info')
-
-        # Throttle parallel workers based on available routes.
+        # Determine concurrency strictly respecting config.PARALLEL_DOWNLOADS and config.MAX_THREADS
+        parallel = getattr(config, 'PARALLEL_DOWNLOADS', False)
+        configured_max_threads = getattr(config, 'MAX_THREADS', 4) if parallel else 1
+        
         single_route_mode = len(target_routes) == 1
-        max_workers = min(3, len(selected_wars)) if single_route_mode else min(10, len(selected_wars))
-        stagger_delay = 2.0 if single_route_mode else 0  # seconds between job submissions
-        if single_route_mode:
-            log_message(f"⚠ Single route only — using {max_workers} workers with {stagger_delay}s stagger", 'warning')
-        log_message(f"🚀 Starting parallel upload with {max_workers} threads", 'info')
+        if not parallel or configured_max_threads <= 1:
+            max_workers = 1
+            stagger_delay = 0
+            log_message("⚙ Upload Mode: Sequential single session (1 worker)", 'info')
+        else:
+            if single_route_mode:
+                max_workers = min(configured_max_threads, 3, len(selected_wars))
+                stagger_delay = 1.5
+                log_message(f"🚀 Starting parallel upload with {max_workers} worker threads ({stagger_delay}s stagger on single route)", 'info')
+            else:
+                max_workers = min(configured_max_threads, len(selected_wars))
+                stagger_delay = 0.3
+                log_message(f"🚀 Starting parallel upload with {max_workers} worker threads across {len(target_routes)} routes", 'info')
         
         upload_lock = threading.Lock()
-        completed_count = [0]
+        tracker = StepProgressTracker(total_files=len(selected_wars))
         errors = []
         
         pam_semaphores = {}
@@ -810,6 +897,7 @@ def deploy_step2(config, selected_wars):
             """Upload and deploy single WAR file using a specifically assigned route"""
             idx, war_prefix = item
             route_idx = idx % len(target_routes)
+            war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
             try:
                 war_file = f"{war_prefix}-{config.VERSION}.war"
                 zip_file = f"{war_prefix}-{config.VERSION}.zip"
@@ -832,16 +920,15 @@ def deploy_step2(config, selected_wars):
                 if not local_file:
                     raise FileNotFoundError(f"No local artifact found for {war_prefix}")
                 
-                war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
                 filename = os.path.basename(local_file)
-
                 route_idx, assigned_route = pick_route(idx)
                 pam_host = assigned_route['host'].split('.')[0]
                 target_ip = assigned_route['username'].split('%')[-1]
 
                 with upload_lock:
                     log_message(f"[{idx+1}/{len(selected_wars)}] {war_name} ({filename}) -> {pam_host} -> {target_ip}", 'info')
-                    update_file_size(war_prefix, war_name, status='uploading')
+                    update_file_size(war_prefix, war_name, status='uploading', broadcast=False)
+                    tracker.file_started(war_prefix, war_name)
 
                 host_sem = get_host_semaphore(assigned_route['host'])
                 try:
@@ -860,7 +947,7 @@ def deploy_step2(config, selected_wars):
                 
                 if filename.endswith('.war'):
                     target_remote_path = f"{config.TARGET_EXTRACT_PATH}/{war_file}"
-                    sftp_upload_optimized(ssh, local_file, target_remote_path, war_prefix, war_name, use_scp=use_scp)
+                    sftp_upload_optimized(ssh, local_file, target_remote_path, war_prefix, war_name, use_scp=use_scp, tracker=tracker)
                     
                     local_md5 = calculate_local_md5(local_file)
                     remote_md5 = get_remote_md5(ssh, target_remote_path)
@@ -870,7 +957,7 @@ def deploy_step2(config, selected_wars):
                             log_message(f"  ⚠ {war_name} ({pam_host}): MD5 mismatch!", 'warning')
                 elif filename.endswith('.zip'):
                     tmp_zip_path = f"/tmp/{filename}_{threading.current_thread().ident}"
-                    sftp_upload_optimized(ssh, local_file, tmp_zip_path, war_prefix, war_name, use_scp=use_scp)
+                    sftp_upload_optimized(ssh, local_file, tmp_zip_path, war_prefix, war_name, use_scp=use_scp, tracker=tracker)
                     
                     local_md5 = calculate_local_md5(local_file)
                     remote_md5 = get_remote_md5(ssh, tmp_zip_path)
@@ -881,7 +968,7 @@ def deploy_step2(config, selected_wars):
                     
                     with upload_lock:
                         log_message(f"  📂 {war_name}: Unzipping via {target_ip}...", 'info')
-                        update_file_size(war_prefix, war_name, status='extracting')
+                        update_file_size(war_prefix, war_name, status='extracting', broadcast=False)
                     
                     unzip_cmd = (
                         f"unzip -o -q '{tmp_zip_path}' -d '{config.TARGET_EXTRACT_PATH}' || "
@@ -895,7 +982,7 @@ def deploy_step2(config, selected_wars):
                     ssh.exec_command(f"rm -f '{tmp_zip_path}'")
                 else:
                     target_tar_path = f"/tmp/{filename}_{threading.current_thread().ident}"
-                    sftp_upload_optimized(ssh, local_file, target_tar_path, war_prefix, war_name, use_scp=use_scp)
+                    sftp_upload_optimized(ssh, local_file, target_tar_path, war_prefix, war_name, use_scp=use_scp, tracker=tracker)
                     
                     local_md5 = calculate_local_md5(local_file)
                     remote_md5 = get_remote_md5(ssh, target_tar_path)
@@ -906,7 +993,7 @@ def deploy_step2(config, selected_wars):
                     
                     with upload_lock:
                         log_message(f"  📂 {war_name}: Extracting tar via {target_ip}...", 'info')
-                        update_file_size(war_prefix, war_name, status='extracting')
+                        update_file_size(war_prefix, war_name, status='extracting', broadcast=False)
                     
                     stdin, stdout, stderr = ssh.exec_command(
                         f"cd '{config.TARGET_EXTRACT_PATH}' && tar -xf '{target_tar_path}'",
@@ -924,10 +1011,8 @@ def deploy_step2(config, selected_wars):
                 
                 with upload_lock:
                     log_message(f"  ✓ {war_name} ({target_ip}): Done ({format_size(final_size)})", 'success')
-                    update_file_size(war_prefix, war_name, target_size=final_size, status='extracted')
-                    completed_count[0] += 1
-                    deployment_state['completed_files'] = completed_count[0]
-                    update_progress(completed_count[0] / len(selected_wars) * 100, war_name)
+                    update_file_size(war_prefix, war_name, target_size=final_size, status='extracted', broadcast=False)
+                    tracker.file_completed(war_prefix, war_name)
                 
                 ssh.close()
                 return True
@@ -936,7 +1021,8 @@ def deploy_step2(config, selected_wars):
                 with upload_lock:
                     errors.append(f"{war_prefix}: {str(e)}")
                     log_message(f"  ✗ {war_prefix} failed on {pam_host} -> {target_ip}: {str(e)}", 'error')
-                    update_file_size(war_prefix, war_name, status='error')
+                    update_file_size(war_prefix, war_name, status='error', broadcast=False)
+                    tracker.file_failed(war_prefix, war_name)
                     # Track failure so retry can use a different route
                     deployment_state['failed_wars'].append(war_prefix)
                     deployment_state['failed_routes'][war_prefix] = route_idx
@@ -946,24 +1032,31 @@ def deploy_step2(config, selected_wars):
                     pass
                 return False
 
-        # Execute distributed uploads
-        import time as _time
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            items = list(enumerate(selected_wars))
-            futures = {}
-            for item in items:
-                if deployment_state.get('cancelled'):
-                    break
-                futures[executor.submit(upload_single_war, item)] = item[1]
-                if stagger_delay and len(futures) < len(items):
-                    _time.sleep(stagger_delay)
+        # Execute uploads respecting max_workers
+        if max_workers > 1:
+            import time as _time
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                items = list(enumerate(selected_wars))
+                futures = {}
+                for item in items:
+                    if deployment_state.get('cancelled'):
+                        break
+                    futures[executor.submit(upload_single_war, item)] = item[1]
+                    if stagger_delay and len(futures) < len(items):
+                        _time.sleep(stagger_delay)
 
-            for future in as_completed(futures):
+                for future in as_completed(futures):
+                    if deployment_state.get('cancelled'):
+                        log_message("⚠ Deployment cancelled", 'warning')
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        break
+        else:
+            for item in enumerate(selected_wars):
                 if deployment_state.get('cancelled'):
-                    log_message("⚠ Deployment cancelled", 'warning')
-                    executor.shutdown(wait=False, cancel_futures=True)
+                    log_message("⚠ Deployment cancelled by user", 'warning')
                     break
+                upload_single_war(item)
         
         if errors:
             log_message(f"⚠ {len(errors)} upload(s) had errors", 'warning')
@@ -1027,16 +1120,17 @@ def deploy_step3(config, selected_wars):
             if os.path.exists(local_tar):
                 local_size = os.path.getsize(local_tar)
                 if war_prefix not in deployment_state['file_sizes'] or deployment_state['file_sizes'][war_prefix].get('source_size', 0) == 0:
-                    update_file_size(war_prefix, war_name, source_size=local_size)
+                    update_file_size(war_prefix, war_name, source_size=local_size, broadcast=False)
             
             # 2. Recover Target Size from utilities folder
             source_war_path = f"{config.TARGET_EXTRACT_PATH}/{war_file}"
             if war_prefix not in deployment_state['file_sizes'] or deployment_state['file_sizes'][war_prefix].get('target_size', 0) == 0:
                 target_size = get_remote_file_size(ssh, source_war_path)
                 if target_size > 0:
-                    update_file_size(war_prefix, war_name, target_size=target_size, status='extracted')
+                    update_file_size(war_prefix, war_name, target_size=target_size, status='extracted', broadcast=False)
         
         war_map = dict(config.WAR_MAPPINGS)
+        tracker = StepProgressTracker(total_files=len(selected_wars))
         
         for idx, war_prefix in enumerate(selected_wars, 1):
             if deployment_state.get('cancelled'):
@@ -1046,8 +1140,8 @@ def deploy_step3(config, selected_wars):
             war_file = f"{war_prefix}-{config.VERSION}.war"
             war_name = war_prefix.replace('iflight-', '').replace('-webapp', '').upper()
             
-            update_progress((idx - 1) / len(selected_wars) * 100, war_name)
-            update_file_size(war_prefix, war_name, status='deploying')
+            tracker.file_started(war_prefix, war_name)
+            update_file_size(war_prefix, war_name, status='deploying', broadcast=False)
             
             log_message(f"[{idx}/{len(selected_wars)}] {war_name}", 'info')
             
@@ -1070,14 +1164,13 @@ def deploy_step3(config, selected_wars):
                 # Verify final deployed size
                 final_war = f"{target_dir}/{war_file}"
                 final_size = get_remote_file_size(ssh, final_war)
-                update_file_size(war_prefix, war_name, target_size=final_size, status='deployed')
+                update_file_size(war_prefix, war_name, target_size=final_size, status='deployed', broadcast=False)
                 
                 log_message(f"  ✓ Deployed to {deploy_folder} ({format_size(final_size)})", 'success')
             else:
                 log_message(f"  ⚠ No deployment mapping found for {war_prefix}", 'warning')
             
-            deployment_state['completed_files'] = idx
-            update_progress(idx / len(selected_wars) * 100, war_name)
+            tracker.file_completed(war_prefix, war_name)
         
         ssh.close()
         
@@ -1634,9 +1727,9 @@ def start_deployment():
                 pass
 
         if config.PARALLEL_DOWNLOADS:
-            log_message(f"✓ Download mode: Parallel multi-thread ({config.MAX_THREADS} threads)", 'info')
+            log_message(f"✓ Transfer mode: Parallel multi-thread ({config.MAX_THREADS} threads)", 'info')
         else:
-            log_message("✓ Download mode: Sequential single-session", 'info')
+            log_message("✓ Transfer mode: Sequential single-session (1 worker)", 'info')
 
         # Update target server details if provided
         if target_server:

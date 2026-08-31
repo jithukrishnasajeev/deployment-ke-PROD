@@ -902,28 +902,72 @@ function createConfetti() {
     }
 }
 
-// Update file sizes display with modern card layout
+// Update file sizes display with modern card layout (in-place DOM updates)
 function updateFileSizes(sizes) {
+    if (!sizes || typeof sizes !== 'object') return;
     fileSizes = sizes;
     const container = document.getElementById('file-sizes-body');
+    if (!container) return;
     
-    const cards = Object.entries(sizes).map(([prefix, info]) => {
+    const entries = Object.entries(sizes);
+    if (entries.length === 0) {
+        if (!container.querySelector('.empty-state')) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="bi bi-inbox"></i>
+                    <span>Run deployment to monitor WAR sizes & transfer matrix</span>
+                </div>
+            `;
+        }
+        return;
+    }
+    
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) {
+        emptyState.remove();
+    }
+    
+    entries.forEach(([prefix, info]) => {
+        const cardId = `file-card-${prefix.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        let card = document.getElementById(cardId);
+        
         const statusBadge = getStatusBadge(info.status);
         const sourceSize = info.source_size > 0 ? formatSize(info.source_size) : '-';
         const targetSize = info.target_size > 0 ? formatSize(info.target_size) : '-';
         
-        // Show transfer progress if actively downloading/uploading
-        let progressBar = '';
-        const isDownloading = (info.status === 'downloading' || info.status === 'processing' || info.status === 'uploading' || info.status === 'extracting');
-        if (isDownloading) {
-            const totalBytes = info.total_size || info.source_size || 0;
-            const transferredBytes = info.transferred || 0;
-            const calcPercent = totalBytes > 0 ? (transferredBytes / totalBytes * 100) : (info.transfer_progress || 0);
-            const percent = Math.min(100, Math.max(0, calcPercent)).toFixed(1);
-            const transferred = formatSize(transferredBytes);
-            const total = totalBytes > 0 ? formatSize(totalBytes) : 'Calculating...';
-            progressBar = `
-                <div class="file-card-progress">
+        const isTransferring = (info.status === 'downloading' || info.status === 'processing' || info.status === 'uploading' || info.status === 'extracting');
+        const totalBytes = info.total_size || info.source_size || 0;
+        const transferredBytes = info.transferred || 0;
+        const calcPercent = totalBytes > 0 ? (transferredBytes / totalBytes * 100) : (info.transfer_progress || 0);
+        const percent = Math.min(100, Math.max(0, calcPercent)).toFixed(1);
+        const transferred = formatSize(transferredBytes);
+        const total = totalBytes > 0 ? formatSize(totalBytes) : 'Calculating...';
+        
+        if (!card) {
+            card = document.createElement('div');
+            card.id = cardId;
+            card.className = 'file-card';
+            card.innerHTML = `
+                <div class="file-card-header">
+                    <div class="file-card-name">
+                        <i class="bi bi-file-earmark-code-fill"></i>
+                        <span class="file-card-title">${escapeHtml(info.name || prefix)}</span>
+                    </div>
+                    <div class="file-card-status" data-status="${escapeHtml(info.status || '')}">
+                        ${statusBadge}
+                    </div>
+                </div>
+                <div class="file-card-body">
+                    <div class="file-size-item">
+                        <div class="file-size-label"><i class="bi bi-download"></i> Source</div>
+                        <div class="file-size-value source-size">${sourceSize}</div>
+                    </div>
+                    <div class="file-size-item">
+                        <div class="file-size-label"><i class="bi bi-upload"></i> Target</div>
+                        <div class="file-size-value target-size">${targetSize}</div>
+                    </div>
+                </div>
+                <div class="file-card-progress" style="display: ${isTransferring ? 'block' : 'none'};">
                     <div class="transfer-progress">
                         <div class="progress-wrapper">
                             <div class="progress-bar-container">
@@ -935,35 +979,49 @@ function updateFileSizes(sizes) {
                     </div>
                 </div>
             `;
+            container.appendChild(card);
+        } else {
+            // Update in place smoothly without destroying DOM
+            const statusEl = card.querySelector('.file-card-status');
+            if (statusEl && statusEl.dataset.status !== info.status) {
+                statusEl.innerHTML = statusBadge;
+                statusEl.dataset.status = info.status || '';
+            }
+            
+            const srcEl = card.querySelector('.source-size');
+            if (srcEl && srcEl.textContent !== sourceSize) {
+                srcEl.textContent = sourceSize;
+            }
+            
+            const tgtEl = card.querySelector('.target-size');
+            if (tgtEl && tgtEl.textContent !== targetSize) {
+                tgtEl.textContent = targetSize;
+            }
+            
+            const progressEl = card.querySelector('.file-card-progress');
+            if (progressEl) {
+                if (isTransferring) {
+                    if (progressEl.style.display !== 'block') {
+                        progressEl.style.display = 'block';
+                    }
+                    const fillEl = progressEl.querySelector('.progress-bar-fill');
+                    const textEl = progressEl.querySelector('.progress-text');
+                    const sizeEl = progressEl.querySelector('.transfer-size');
+                    
+                    if (fillEl) fillEl.style.width = `${percent}%`;
+                    if (textEl && textEl.textContent !== `${percent}%`) textEl.textContent = `${percent}%`;
+                    if (sizeEl) {
+                        const sizeStr = `${transferred} / ${total}`;
+                        if (sizeEl.textContent !== sizeStr) sizeEl.textContent = sizeStr;
+                    }
+                } else {
+                    if (progressEl.style.display !== 'none') {
+                        progressEl.style.display = 'none';
+                    }
+                }
+            }
         }
-        
-        return `
-            <div class="file-card">
-                <div class="file-card-header">
-                    <div class="file-card-name">
-                        <i class="bi bi-file-earmark-code-fill"></i>
-                        ${info.name || prefix}
-                    </div>
-                    <div class="file-card-status">
-                        ${statusBadge}
-                    </div>
-                </div>
-                <div class="file-card-body">
-                    <div class="file-size-item">
-                        <div class="file-size-label"><i class="bi bi-download"></i> Source</div>
-                        <div class="file-size-value">${sourceSize}</div>
-                    </div>
-                    <div class="file-size-item">
-                        <div class="file-size-label"><i class="bi bi-upload"></i> Target</div>
-                        <div class="file-size-value">${targetSize}</div>
-                    </div>
-                </div>
-                ${progressBar}
-            </div>
-        `;
-    }).join('');
-    
-    container.innerHTML = cards || '<div class="empty-state"><i class="bi bi-inbox"></i><span>Run deployment to see file sizes</span></div>';
+    });
 }
 
 // Get status badge HTML with icons
@@ -1115,7 +1173,9 @@ function updateProgress(progress, currentFile, completed, total) {
     const roundedProgress = Math.round(progress);
     
     if (progressBar) progressBar.style.width = roundedProgress + '%';
-    if (progressText) progressText.textContent = roundedProgress + '%';
+    if (progressText && progressText.textContent !== roundedProgress + '%') {
+        progressText.textContent = roundedProgress + '%';
+    }
     
     // Telemetry Badge & Pipeline Stepper Node Updates
     const telemetryBadge = document.getElementById('telemetry-status-badge');
@@ -1126,14 +1186,20 @@ function updateProgress(progress, currentFile, completed, total) {
 
     if (telemetryBadge) {
         if (roundedProgress > 0 && roundedProgress < 100) {
-            telemetryBadge.className = 'telemetry-badge running';
-            if (telemetryText) telemetryText.textContent = 'Executing';
+            if (!telemetryBadge.classList.contains('running')) {
+                telemetryBadge.className = 'telemetry-badge running';
+                if (telemetryText) telemetryText.textContent = 'Executing';
+            }
         } else if (roundedProgress >= 100) {
-            telemetryBadge.className = 'telemetry-badge complete';
-            if (telemetryText) telemetryText.textContent = 'Completed';
+            if (!telemetryBadge.classList.contains('complete')) {
+                telemetryBadge.className = 'telemetry-badge complete';
+                if (telemetryText) telemetryText.textContent = 'Completed';
+            }
         } else {
-            telemetryBadge.className = 'telemetry-badge idle';
-            if (telemetryText) telemetryText.textContent = 'Standby';
+            if (!telemetryBadge.classList.contains('idle')) {
+                telemetryBadge.className = 'telemetry-badge idle';
+                if (telemetryText) telemetryText.textContent = 'Standby';
+            }
         }
     }
 
@@ -1155,8 +1221,10 @@ function updateProgress(progress, currentFile, completed, total) {
     // Add/remove active class for animation
     if (progressSection) {
         if (roundedProgress > 0 && roundedProgress < 100) {
-            progressSection.classList.add('active');
-            progressSection.classList.remove('progress-complete', 'complete');
+            if (!progressSection.classList.contains('active')) {
+                progressSection.classList.add('active');
+                progressSection.classList.remove('progress-complete', 'complete');
+            }
         } else if (roundedProgress >= 100) {
             progressSection.classList.remove('active');
             progressSection.classList.add('progress-complete', 'complete');
@@ -1167,21 +1235,20 @@ function updateProgress(progress, currentFile, completed, total) {
     
     if (currentFile && currentFileSpan) {
         if (currentFileSpan.textContent !== currentFile) {
-            currentFileSpan.style.opacity = '0';
-            setTimeout(() => {
-                currentFileSpan.textContent = currentFile;
-                currentFileSpan.style.opacity = '1';
-            }, 150);
+            currentFileSpan.textContent = currentFile;
         }
-        currentFileSpan.classList.add('file-processing');
+        if (!currentFileSpan.classList.contains('file-processing')) {
+            currentFileSpan.classList.add('file-processing');
+        }
     }
     
     if (completed !== undefined && total !== undefined) {
-        if (completedSpan && parseInt(completedSpan.textContent) !== completed) {
-            completedSpan.classList.add('counter');
+        if (completedSpan && completedSpan.textContent !== String(completed)) {
+            completedSpan.textContent = completed;
         }
-        if (completedSpan) completedSpan.textContent = completed;
-        if (totalSpan) totalSpan.textContent = total;
+        if (totalSpan && totalSpan.textContent !== String(total)) {
+            totalSpan.textContent = total;
+        }
     }
 }
 
@@ -1189,33 +1256,36 @@ function updateProgress(progress, currentFile, completed, total) {
 function clearLogs() {
     document.getElementById('logs-container').innerHTML = '';
     // Reset file sizes table
-    document.getElementById('file-sizes-body').innerHTML = `
-        <tr class="empty-row">
-            <td colspan="4">
+    const fileSizesBody = document.getElementById('file-sizes-body');
+    if (fileSizesBody) {
+        fileSizesBody.innerHTML = `
+            <div class="empty-state">
                 <i class="bi bi-inbox"></i>
-                <span>Run deployment to see sizes</span>
-            </td>
-        </tr>
-    `;
+                <span>Run deployment to monitor WAR sizes & transfer matrix</span>
+            </div>
+        `;
+    }
     fileSizes = {};
     
     // Reset progress state
     const progressBar = document.getElementById('progress-bar');
     const progressText = document.getElementById('progress-text');
-    const progressSection = document.querySelector('.progress-section');
+    const progressSection = document.querySelector('.progress-section') || document.querySelector('.progress-hero-card');
     const currentFileSpan = document.getElementById('current-file');
     const completedSpan = document.getElementById('completed-count');
     const totalSpan = document.getElementById('total-count');
     
-    progressBar.style.width = '0%';
-    progressText.textContent = '0%';
-    currentFileSpan.textContent = '-';
-    currentFileSpan.classList.remove('file-processing');
-    completedSpan.textContent = '0';
-    totalSpan.textContent = '0';
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressText) progressText.textContent = '0%';
+    if (currentFileSpan) {
+        currentFileSpan.textContent = '-';
+        currentFileSpan.classList.remove('file-processing');
+    }
+    if (completedSpan) completedSpan.textContent = '0';
+    if (totalSpan) totalSpan.textContent = '0';
     
     if (progressSection) {
-        progressSection.classList.remove('active', 'progress-complete');
+        progressSection.classList.remove('active', 'progress-complete', 'complete');
     }
 }
 
