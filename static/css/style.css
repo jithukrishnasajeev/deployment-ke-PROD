@@ -1428,20 +1428,56 @@ body.config-fullscreen-mode .passwords-grid {
 }
 .empty-state i { font-size: 20px; color: var(--text-dim); }
 
+/* Micro Animation Keyframes */
+@keyframes spinFast {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+@keyframes spinSlow {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+@keyframes pulseGlow {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 2px currentColor); }
+    50% { transform: scale(1.12); filter: drop-shadow(0 0 7px currentColor); }
+}
+@keyframes floatArrow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2.5px); }
+}
+@keyframes popCheck {
+    0% { transform: scale(0.6); opacity: 0; }
+    70% { transform: scale(1.22); }
+    100% { transform: scale(1); opacity: 1; }
+}
+@keyframes gradientWave {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.spin-fast   { animation: spinFast 1s linear infinite; display: inline-block; }
+.spin-slow   { animation: spinSlow 3.5s linear infinite; display: inline-block; }
+.pulse-glow  { animation: pulseGlow 1.8s ease-in-out infinite; display: inline-block; }
+.float-anim  { animation: floatArrow 1.5s ease-in-out infinite; display: inline-block; }
+.pop-anim    { animation: popCheck 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; display: inline-block; }
+
 /* Sleek Horizontal Telemetry Stream Row */
 .matrix-row {
     background: var(--bg-card);
     border: 1px solid var(--border-default);
+    border-left: 3px solid var(--border-default);
     border-radius: var(--r-sm);
     padding: 7px 10px;
     display: flex;
     flex-direction: column;
     gap: 5px;
     position: relative;
-    transition: all var(--dur) var(--ease);
+    transition: all 0.25s var(--ease);
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
+    overflow: hidden;
 }
 .matrix-row:hover {
     border-color: var(--border-bright);
@@ -1449,17 +1485,145 @@ body.config-fullscreen-mode .passwords-grid {
     box-shadow: var(--shadow-sm);
 }
 
-.matrix-row.transferring {
-    border-color: var(--border-accent);
-    background: rgba(99, 102, 241, 0.08);
-    box-shadow: 0 0 10px rgba(99, 102, 241, 0.18);
+/* 1. Pending / Queued (Slate Silver) */
+.matrix-row.status-pending {
+    border-left-color: rgba(148, 163, 184, 0.4);
 }
-.matrix-row.completed {
-    border-left: 3px solid var(--success);
+.matrix-pill.pill-pending {
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.25);
 }
-.matrix-row.error {
-    border-left: 3px solid var(--danger);
-    background: rgba(239, 68, 68, 0.06);
+
+/* 2. Downloading from S3 (Electric Cyber-Cyan) */
+.matrix-row.status-downloading {
+    border-color: rgba(56, 189, 248, 0.45);
+    border-left-color: #38bdf8;
+    background: rgba(56, 189, 248, 0.08);
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.18);
+}
+.matrix-row.status-downloading .matrix-row-artifact i { color: #38bdf8; }
+.matrix-pill.pill-downloading {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+.matrix-row.status-downloading .matrix-progress-fill {
+    background: linear-gradient(90deg, #0284c7, #38bdf8, #7dd3fc, #0284c7);
+    background-size: 200% 100%;
+    animation: gradientWave 2s linear infinite;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+}
+.matrix-row.status-downloading .matrix-progress-num {
+    color: #38bdf8;
+}
+
+/* 3. Downloaded from S3 (Luminous Teal / Aqua Mint) */
+.matrix-row.status-downloaded {
+    border-left-color: #2dd4bf;
+    background: rgba(45, 212, 191, 0.05);
+}
+.matrix-row.status-downloaded .matrix-row-artifact i { color: #2dd4bf; }
+.matrix-pill.pill-downloaded {
+    background: rgba(45, 212, 191, 0.15);
+    color: #2dd4bf;
+    border: 1px solid rgba(45, 212, 191, 0.35);
+}
+
+/* 4. Extracting WAR / ZIP (Radiant Sunset Amber) */
+.matrix-row.status-extracting {
+    border-color: rgba(251, 191, 36, 0.45);
+    border-left-color: #fbbf24;
+    background: rgba(251, 191, 36, 0.08);
+    box-shadow: 0 0 14px rgba(251, 191, 36, 0.2);
+}
+.matrix-row.status-extracting .matrix-row-artifact i { color: #fbbf24; }
+.matrix-pill.pill-extracting {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.25);
+}
+.matrix-row.status-extracting .matrix-progress-fill {
+    background: linear-gradient(90deg, #d97706, #fbbf24, #fde68a, #d97706);
+    background-size: 200% 100%;
+    animation: gradientWave 2s linear infinite;
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
+}
+.matrix-row.status-extracting .matrix-progress-num {
+    color: #fbbf24;
+}
+
+/* 5. Extracted (Warm Golden Honey) */
+.matrix-row.status-extracted {
+    border-left-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.05);
+}
+.matrix-row.status-extracted .matrix-row-artifact i { color: #f59e0b; }
+.matrix-pill.pill-extracted {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+/* 6. Uploading / Deploying across PAM Routes (Neon Royal Purple / Violet) */
+.matrix-row.status-uploading,
+.matrix-row.status-deploying {
+    border-color: rgba(168, 85, 247, 0.5);
+    border-left-color: #c084fc;
+    background: rgba(168, 85, 247, 0.09);
+    box-shadow: 0 0 16px rgba(168, 85, 247, 0.22);
+}
+.matrix-row.status-uploading .matrix-row-artifact i,
+.matrix-row.status-deploying .matrix-row-artifact i { color: #c084fc; }
+.matrix-pill.pill-uploading,
+.matrix-pill.pill-deploying {
+    background: rgba(168, 85, 247, 0.18);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.45);
+    box-shadow: 0 0 8px rgba(168, 85, 247, 0.28);
+}
+.matrix-row.status-uploading .matrix-progress-fill,
+.matrix-row.status-deploying .matrix-progress-fill {
+    background: linear-gradient(90deg, #7c3aed, #c084fc, #e879f9, #7c3aed);
+    background-size: 200% 100%;
+    animation: gradientWave 2s linear infinite;
+    box-shadow: 0 0 8px rgba(168, 85, 247, 0.5);
+}
+.matrix-row.status-uploading .matrix-progress-num,
+.matrix-row.status-deploying .matrix-progress-num {
+    color: #c084fc;
+}
+
+/* 7. Deployed / Completed (Lush Emerald Green) */
+.matrix-row.status-deployed {
+    border-left-color: #34d399;
+    background: rgba(52, 211, 153, 0.06);
+}
+.matrix-row.status-deployed .matrix-row-artifact i { color: #34d399; }
+.matrix-pill.pill-deployed {
+    background: rgba(52, 211, 153, 0.16);
+    color: #34d399;
+    border: 1px solid rgba(52, 211, 153, 0.4);
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.2);
+}
+
+/* 8. Error / Failed (Crimson Coral Red) */
+.matrix-row.status-error,
+.matrix-row.status-failed {
+    border-color: rgba(244, 63, 94, 0.5);
+    border-left-color: #f43f5e;
+    background: rgba(244, 63, 94, 0.08);
+    box-shadow: 0 0 12px rgba(244, 63, 94, 0.25);
+}
+.matrix-row.status-error .matrix-row-artifact i,
+.matrix-row.status-failed .matrix-row-artifact i { color: #f43f5e; }
+.matrix-pill.pill-error,
+.matrix-pill.pill-failed {
+    background: rgba(244, 63, 94, 0.18);
+    color: #f43f5e;
+    border: 1px solid rgba(244, 63, 94, 0.5);
 }
 
 .matrix-row-main {
@@ -1526,10 +1690,6 @@ body.config-fullscreen-mode .passwords-grid {
     white-space: nowrap;
     line-height: 1.2;
 }
-.matrix-pill.pill-pending { background: var(--bg-input); color: var(--text-muted); border: 1px solid var(--border-subtle); }
-.matrix-pill.pill-active  { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--border-accent); }
-.matrix-pill.pill-done    { background: var(--success-bg); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); }
-.matrix-pill.pill-error   { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
 
 .matrix-row-progress {
     display: flex;

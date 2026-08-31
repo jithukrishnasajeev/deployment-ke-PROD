@@ -1115,37 +1115,48 @@ function updateFileSizes(sizes) {
         const sourceSize = info.source_size > 0 ? formatSize(info.source_size) : '-';
         const targetSize = info.target_size > 0 ? formatSize(info.target_size) : '-';
         
-        const isTransferring = (info.status === 'downloading' || info.status === 'processing' || info.status === 'uploading' || info.status === 'extracting');
-        const isDone = (info.status === 'downloaded' || info.status === 'extracted' || info.status === 'deployed');
-        const isError = (info.status === 'error');
-        
-        if (isDone) completedCount++;
-        if (info.total_size) totalBytesSum += info.total_size;
-        else if (info.source_size) totalBytesSum += info.source_size;
-        
+        const status = (info.status || 'pending').toLowerCase();
         const totalBytes = info.total_size || info.source_size || 0;
         const transferredBytes = info.transferred || 0;
         const calcPercent = totalBytes > 0 ? (transferredBytes / totalBytes * 100) : (info.transfer_progress || 0);
         const percent = Math.min(100, Math.max(0, calcPercent)).toFixed(0);
         
-        let statusClass = 'pending';
-        let badgeHtml = '<span class="matrix-pill pill-pending"><i class="bi bi-clock"></i> Pending</span>';
+        let statusClass = 'status-pending';
+        let badgeHtml = '<span class="matrix-pill pill-pending"><i class="bi bi-clock"></i> Queued</span>';
+        let isTransferring = false;
         
-        if (isTransferring) {
-            statusClass = 'transferring';
-            const actionIcon = info.status === 'uploading' ? 'bi-cloud-arrow-up' : 'bi-cloud-arrow-down';
-            const actionLabel = info.status === 'uploading' ? 'Uploading' : 'Downloading';
-            badgeHtml = `<span class="matrix-pill pill-active"><i class="bi ${actionIcon}"></i> ${actionLabel}</span>`;
-        } else if (isDone) {
-            statusClass = 'completed';
-            const doneLabel = info.status === 'deployed' ? 'Deployed' : (info.status === 'extracted' ? 'Extracted' : 'Downloaded');
-            badgeHtml = `<span class="matrix-pill pill-done"><i class="bi bi-check-circle-fill"></i> ${doneLabel}</span>`;
-        } else if (isError) {
-            statusClass = 'error';
-            badgeHtml = '<span class="matrix-pill pill-error"><i class="bi bi-x-circle-fill"></i> Error</span>';
+        if (status === 'downloading' || status === 'processing') {
+            statusClass = 'status-downloading';
+            isTransferring = true;
+            badgeHtml = `<span class="matrix-pill pill-downloading"><i class="bi bi-cloud-arrow-down-fill float-anim"></i> Downloading</span>`;
+        } else if (status === 'downloaded') {
+            statusClass = 'status-downloaded';
+            badgeHtml = `<span class="matrix-pill pill-downloaded"><i class="bi bi-check2-circle pop-anim"></i> Downloaded</span>`;
+        } else if (status === 'extracting') {
+            statusClass = 'status-extracting';
+            isTransferring = true;
+            badgeHtml = `<span class="matrix-pill pill-extracting"><i class="bi bi-gear-fill spin-slow"></i> Extracting</span>`;
+        } else if (status === 'extracted') {
+            statusClass = 'status-extracted';
+            badgeHtml = `<span class="matrix-pill pill-extracted"><i class="bi bi-box-seam-fill pop-anim"></i> Extracted</span>`;
+        } else if (status === 'uploading' || status === 'deploying') {
+            statusClass = 'status-uploading';
+            isTransferring = true;
+            badgeHtml = `<span class="matrix-pill pill-uploading"><i class="bi bi-cloud-arrow-up-fill float-anim"></i> Uploading</span>`;
+        } else if (status === 'deployed') {
+            statusClass = 'status-deployed';
+            badgeHtml = `<span class="matrix-pill pill-deployed"><i class="bi bi-patch-check-fill pop-anim"></i> Deployed</span>`;
+        } else if (status === 'error' || status === 'failed') {
+            statusClass = 'status-error';
+            badgeHtml = `<span class="matrix-pill pill-error"><i class="bi bi-exclamation-octagon-fill pulse-glow"></i> Error</span>`;
         }
         
-        const tooltip = `${prefix} | Status: ${info.status || 'pending'} | Source: ${sourceSize} | Target: ${targetSize}`;
+        const isDone = (status === 'downloaded' || status === 'extracted' || status === 'deployed');
+        if (isDone) completedCount++;
+        if (info.total_size) totalBytesSum += info.total_size;
+        else if (info.source_size) totalBytesSum += info.source_size;
+        
+        const tooltip = `${prefix} | Status: ${status} | Source: ${sourceSize} | Target: ${targetSize}`;
         
         if (!card) {
             card = document.createElement('div');
@@ -1208,20 +1219,22 @@ function updateFileSizes(sizes) {
 
 // Get status badge HTML with icons
 function getStatusBadge(status) {
+    const s = (status || 'pending').toLowerCase();
     const badges = {
-        'pending': '<span class="status-badge status-pending"><i class="bi bi-clock"></i> Pending</span>',
-        'processing': '<span class="status-badge status-downloading"><i class="bi bi-gear-fill"></i> Processing</span>',
-        'downloading': '<span class="status-badge status-downloading"><i class="bi bi-cloud-download-fill"></i> Downloading</span>',
-        'downloaded': '<span class="status-badge status-downloaded"><i class="bi bi-check-circle-fill"></i> Downloaded</span>',
-        'uploading': '<span class="status-badge status-uploading"><i class="bi bi-cloud-upload-fill"></i> Uploading</span>',
-        'extracting': '<span class="status-badge status-extracting"><i class="bi bi-file-zip-fill"></i> Extracting</span>',
-        'extracted': '<span class="status-badge status-downloaded"><i class="bi bi-box-fill"></i> Extracted</span>',
-        'deploying': '<span class="status-badge status-uploading"><i class="bi bi-rocket-fill"></i> Deploying</span>',
-        'deployed': '<span class="status-badge status-deployed"><i class="bi bi-check-circle-fill"></i> Deployed</span>',
-        'error': '<span class="status-badge status-error"><i class="bi bi-x-circle-fill"></i> Error</span>',
-        'warning': '<span class="status-badge status-pending"><i class="bi bi-exclamation-triangle-fill"></i> Warning</span>'
+        'pending': '<span class="matrix-pill pill-pending"><i class="bi bi-clock"></i> Queued</span>',
+        'processing': '<span class="matrix-pill pill-downloading"><i class="bi bi-cloud-arrow-down-fill float-anim"></i> Processing</span>',
+        'downloading': '<span class="matrix-pill pill-downloading"><i class="bi bi-cloud-arrow-down-fill float-anim"></i> Downloading</span>',
+        'downloaded': '<span class="matrix-pill pill-downloaded"><i class="bi bi-check2-circle pop-anim"></i> Downloaded</span>',
+        'extracting': '<span class="matrix-pill pill-extracting"><i class="bi bi-gear-fill spin-slow"></i> Extracting</span>',
+        'extracted': '<span class="matrix-pill pill-extracted"><i class="bi bi-box-seam-fill pop-anim"></i> Extracted</span>',
+        'uploading': '<span class="matrix-pill pill-uploading"><i class="bi bi-cloud-arrow-up-fill float-anim"></i> Uploading</span>',
+        'deploying': '<span class="matrix-pill pill-uploading"><i class="bi bi-cloud-arrow-up-fill float-anim"></i> Deploying</span>',
+        'deployed': '<span class="matrix-pill pill-deployed"><i class="bi bi-patch-check-fill pop-anim"></i> Deployed</span>',
+        'error': '<span class="matrix-pill pill-error"><i class="bi bi-exclamation-octagon-fill pulse-glow"></i> Error</span>',
+        'failed': '<span class="matrix-pill pill-error"><i class="bi bi-exclamation-octagon-fill pulse-glow"></i> Failed</span>',
+        'warning': '<span class="matrix-pill pill-extracting"><i class="bi bi-exclamation-triangle-fill"></i> Warning</span>'
     };
-    return badges[status] || badges['pending'];
+    return badges[s] || badges['pending'];
 }
 
 // Update connection status indicators with animations
