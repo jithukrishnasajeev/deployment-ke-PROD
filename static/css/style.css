@@ -1428,25 +1428,6 @@ body.config-fullscreen-mode .passwords-grid {
 }
 .empty-state i { font-size: 20px; color: var(--text-dim); }
 
-/* Micro Animation Keyframes */
-@keyframes spinFast {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-@keyframes spinSlow {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-@keyframes pulseGlow {
-    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 2px currentColor); }
-    50% { transform: scale(1.12); filter: drop-shadow(0 0 7px currentColor); }
-}
-@keyframes floatArrow {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-2.5px); }
-}
-@keyframes popCheck {
-    0% { transform: scale(0.6); opacity: 0; }
 /* Soft & Minimal Micro Animation Keyframes */
 @keyframes gentlePulse {
     0%, 100% { opacity: 1; transform: scale(1); }
