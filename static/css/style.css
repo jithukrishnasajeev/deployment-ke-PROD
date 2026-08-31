@@ -48,15 +48,15 @@
     --text-dim: #3e4f68;
 
     /* Borders */
-    --border-subtle: rgba(255, 255, 255, 0.06);
-    --border-default: rgba(255, 255, 255, 0.1);
-    --border-bright: rgba(255, 255, 255, 0.18);
-    --border-accent: rgba(45, 212, 191, 0.35);
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-default: rgba(255, 255, 255, 0.12);
+    --border-bright: rgba(255, 255, 255, 0.22);
+    --border-accent: rgba(45, 212, 191, 0.4);
 
     /* Typography */
-    --font-display: 'Outfit', 'Inter', -apple-system, sans-serif;
-    --font-body: 'Inter', -apple-system, sans-serif;
-    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --font-display: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Segoe UI Mono', 'Consolas', monospace;
 
     /* Radius */
     --r-sm: 6px;
@@ -78,50 +78,50 @@
 
 /* ─── LIGHT THEME TOKENS ────────────────────────────────────────── */
 .light-theme {
-    --bg-base: #f0f4f8;
+    --bg-base: #f8fafc;
     --bg-surface: #ffffff;
-    --bg-elevated: rgba(255, 255, 255, 0.92);
-    --bg-card: rgba(241, 245, 249, 0.8);
-    --bg-card-hover: rgba(226, 232, 240, 0.85);
-    --bg-input: rgba(248, 250, 252, 0.95);
+    --bg-elevated: #ffffff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f1f5f9;
+    --bg-input: #f8fafc;
     --bg-input-focus: #ffffff;
-    --bg-overlay: rgba(255, 255, 255, 0.97);
+    --bg-overlay: rgba(255, 255, 255, 0.98);
 
-    --accent: #0d9488;
-    --accent-hover: #0f766e;
-    --accent-dim: #14b8a6;
-    --accent-glow: rgba(13, 148, 136, 0.2);
-    --accent-bg: rgba(13, 148, 136, 0.06);
+    --accent: #0284c7;
+    --accent-hover: #0369a1;
+    --accent-dim: #0ea5e9;
+    --accent-glow: rgba(2, 132, 199, 0.2);
+    --accent-bg: rgba(2, 132, 199, 0.08);
 
     --gold: #d97706;
     --gold-dim: #b45309;
     --gold-glow: rgba(217, 119, 6, 0.2);
-    --gold-bg: rgba(217, 119, 6, 0.06);
+    --gold-bg: rgba(217, 119, 6, 0.08);
 
     --blue: #2563eb;
     --blue-glow: rgba(37, 99, 235, 0.2);
-    --blue-bg: rgba(37, 99, 235, 0.06);
+    --blue-bg: rgba(37, 99, 235, 0.08);
 
     --success: #059669;
-    --success-bg: rgba(5, 150, 105, 0.08);
+    --success-bg: rgba(5, 150, 105, 0.1);
     --warning: #d97706;
-    --warning-bg: rgba(217, 119, 6, 0.06);
-    --danger: #dc2626;
-    --danger-bg: rgba(220, 38, 38, 0.06);
+    --warning-bg: rgba(217, 119, 6, 0.08);
+    --danger: #e11d48;
+    --danger-bg: rgba(225, 29, 72, 0.08);
 
-    --text-primary: #1e293b;
-    --text-secondary: #475569;
-    --text-muted: #94a3b8;
-    --text-dim: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+    --text-dim: #94a3b8;
 
-    --border-subtle: rgba(0, 0, 0, 0.06);
-    --border-default: rgba(0, 0, 0, 0.1);
-    --border-bright: rgba(0, 0, 0, 0.15);
-    --border-accent: rgba(13, 148, 136, 0.35);
+    --border-subtle: #f1f5f9;
+    --border-default: #e2e8f0;
+    --border-bright: #cbd5e1;
+    --border-accent: rgba(2, 132, 199, 0.4);
 
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-    --shadow-lg: 0 8px 30px rgba(0,0,0,0.1);
+    --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
+    --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+    --shadow-lg: 0 8px 30px rgba(15, 23, 42, 0.12);
     --shadow-glow: 0 0 15px var(--accent-glow);
 }
 
@@ -135,19 +135,21 @@ html, body {
     color: var(--text-primary);
     font-family: var(--font-body);
     font-size: 13px;
-    line-height: 1.55;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
 ::selection { background: rgba(45, 212, 191, 0.3); color: #fff; }
-.light-theme ::selection { background: rgba(13, 148, 136, 0.25); color: #000; }
+.light-theme ::selection { background: rgba(2, 132, 199, 0.25); color: #000; }
 
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
-.light-theme ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+.light-theme ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
 
 /* ─── Animated Background ──────────────────────────────────────── */
 .animated-bg {
@@ -1235,10 +1237,10 @@ body.config-fullscreen-mode .passwords-grid {
     overflow: hidden;
     flex: 1;
     min-width: 0;
-    gap: 1px;
+    gap: 2px;
 }
 .telemetry-card-label {
-    font-size: 9px;
+    font-size: 10px;
     color: var(--text-muted);
     font-family: var(--font-display);
     font-weight: 600;
@@ -1250,7 +1252,7 @@ body.config-fullscreen-mode .passwords-grid {
 }
 .telemetry-card-val {
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: 12.5px;
     font-weight: 700;
     color: var(--text-primary);
     white-space: nowrap;
@@ -1283,9 +1285,10 @@ body.config-fullscreen-mode .passwords-grid {
     white-space: nowrap;
 }
 .telemetry-badge-mini {
-    font-size: 8.5px;
+    font-size: 10px;
     font-family: var(--font-mono);
-    padding: 1px 4px;
+    font-weight: 600;
+    padding: 2px 6px;
     border-radius: var(--r-full);
     background: var(--bg-input);
     color: var(--text-muted);
@@ -1328,7 +1331,7 @@ body.config-fullscreen-mode .passwords-grid {
 .section-title {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--text-secondary);
     display: flex; align-items: center; gap: 6px;
     text-transform: uppercase;
@@ -1340,7 +1343,7 @@ body.config-fullscreen-mode .passwords-grid {
 .section-title i { color: var(--accent); font-size: 12px; }
 
 .matrix-summary-pill {
-    font-size: 9.5px;
+    font-size: 10.5px;
     font-family: var(--font-mono);
     font-weight: 600;
     padding: 2px 8px;
@@ -1355,10 +1358,10 @@ body.config-fullscreen-mode .passwords-grid {
 }
 
 .mini-btn-test-routes {
-    font-size: 9.5px;
+    font-size: 10.5px;
     font-weight: 600;
     font-family: var(--font-display);
-    padding: 2px 7px;
+    padding: 2px 8px;
     border-radius: var(--r-sm);
     background: var(--accent-bg);
     color: var(--accent);
@@ -1416,7 +1419,7 @@ body.config-fullscreen-mode .passwords-grid {
     min-height: 75px;
     padding: 16px 12px;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 11.5px;
     gap: 6px;
     text-align: center;
     background: var(--bg-card);
@@ -1633,7 +1636,7 @@ body.config-fullscreen-mode .passwords-grid {
     align-items: center;
     gap: 6px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     color: var(--text-primary);
     white-space: nowrap;
@@ -1653,7 +1656,7 @@ body.config-fullscreen-mode .passwords-grid {
     display: flex;
     align-items: center;
     gap: 5px;
-    font-size: 10px;
+    font-size: 11px;
     font-family: var(--font-mono);
     color: var(--text-secondary);
     white-space: nowrap;
@@ -1665,14 +1668,14 @@ body.config-fullscreen-mode .passwords-grid {
 }
 .matrix-row-flow .flow-arrow {
     color: var(--text-muted);
-    font-size: 9px;
+    font-size: 9.5px;
 }
 
 .matrix-row-status {
     flex-shrink: 0;
 }
 .matrix-pill {
-    font-size: 9px;
+    font-size: 10.5px;
     font-family: var(--font-mono);
     font-weight: 600;
     padding: 2px 7px;
@@ -1693,7 +1696,7 @@ body.config-fullscreen-mode .passwords-grid {
 }
 .matrix-progress-track {
     flex: 1;
-    height: 3.5px;
+    height: 4px;
     border-radius: 2px;
     background: var(--bg-input);
     border: 1px solid var(--border-subtle);
@@ -1706,12 +1709,12 @@ body.config-fullscreen-mode .passwords-grid {
     transition: width 0.35s ease;
 }
 .matrix-progress-num {
-    font-size: 9px;
+    font-size: 10.5px;
     font-family: var(--font-mono);
     font-weight: 700;
     color: var(--accent);
     flex-shrink: 0;
-    min-width: 28px;
+    min-width: 30px;
     text-align: right;
 }
 
@@ -1753,8 +1756,8 @@ body.config-fullscreen-mode .passwords-grid {
     font-size: 12px; flex-shrink: 0;
 }
 .conn-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow: hidden; flex: 1; }
-.conn-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.conn-status { font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conn-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conn-status { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .conn-status.unknown { color: var(--text-muted); }
 .conn-status.success  { color: var(--success); }
 .conn-status.failed   { color: var(--danger); }
@@ -1777,7 +1780,7 @@ body.config-fullscreen-mode .passwords-grid {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 9.5px;
+    font-size: 10.5px;
     font-weight: 600;
     font-family: var(--font-display);
     color: var(--text-secondary);
@@ -1827,7 +1830,7 @@ body.config-fullscreen-mode .passwords-grid {
 }
 .route-chip-host {
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: 10.5px;
     font-weight: 600;
     color: var(--text-primary);
     white-space: nowrap;
@@ -1837,7 +1840,7 @@ body.config-fullscreen-mode .passwords-grid {
 }
 .route-chip-ip {
     font-family: var(--font-mono);
-    font-size: 8px;
+    font-size: 9.5px;
     color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
@@ -1871,9 +1874,115 @@ body.config-fullscreen-mode .passwords-grid {
     animation: pulse 0.8s infinite;
 }
 .route-chip-latency {
-    font-size: 8.5px;
+    font-size: 9.5px;
     font-family: var(--font-mono);
     color: var(--text-muted);
+}
+
+/* ─── LIGHT THEME DEDICATED OVERRIDES ────────────────────────────── */
+.light-theme .telemetry-card {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.light-theme .telemetry-card:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+.light-theme .files-list {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+.light-theme .matrix-row {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    border-left-color: #cbd5e1;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.light-theme .matrix-row:hover {
+    border-color: #94a3b8;
+    background: #f8fafc;
+}
+.light-theme .connection-item {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.light-theme .connection-item:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+.light-theme .routes-health-container {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.light-theme .route-chip {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+.light-theme .route-chip:hover {
+    border-color: #cbd5e1;
+    background: #ffffff;
+}
+.light-theme .matrix-summary-pill {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    color: #475569;
+}
+.light-theme .telemetry-badge-mini {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #64748b;
+}
+.light-theme .matrix-progress-track {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+}
+.light-theme .column-header {
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+}
+.light-theme .panel-container {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.light-theme .war-item {
+    background: #ffffff;
+    border-color: #e2e8f0;
+}
+.light-theme .war-item:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+.light-theme .top-header {
+    background: rgba(255, 255, 255, 0.95);
+    border-bottom: 1px solid #e2e8f0;
+}
+.light-theme .version-badge {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #0f172a;
+}
+.light-theme .theme-toggle {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #334155;
+}
+.light-theme .theme-toggle:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+.light-theme .form-control {
+    background: #ffffff;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+.light-theme .form-control:focus {
+    background: #ffffff;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
 }
 
 /* ─── RESPONSIVE ────────────────────────────────────────────────── */
