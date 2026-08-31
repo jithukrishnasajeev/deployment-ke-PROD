@@ -298,34 +298,114 @@ html, body {
 
 /* ─── MAIN 3-COLUMN LAYOUT ─────────────────────────────────────── */
 .main-container {
-    display:flex; height:calc(100vh - 52px);
-    position:relative; z-index:1; overflow:hidden;
+    display: flex;
+    height: calc(100vh - 52px);
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+    --col-left-width: 380px;
+    --col-right-width: 360px;
 }
 
 .column {
-    display:flex; flex-direction:column; overflow:hidden;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     background: var(--bg-elevated);
     backdrop-filter: blur(16px) saturate(1.2);
     -webkit-backdrop-filter: blur(16px) saturate(1.2);
     border-right: 1px solid var(--border-subtle);
-    transition: all 0.35s var(--ease);
+    transition: width 0.2s ease, max-width 0.2s ease;
 }
-.column-left { width:380px; min-width:320px; max-width:550px; }
-.column-center { flex:1; min-width:300px; }
-.column-right { width:360px; min-width:280px; max-width:480px; border-right:none; }
+
+/* When actively resizing, eliminate transitions for instantaneous 60fps tracking */
+body.is-resizing,
+body.is-resizing * {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    cursor: col-resize !important;
+}
+
+body.is-resizing .column {
+    transition: none !important;
+}
+
+.column-left {
+    width: var(--col-left-width, 380px);
+    min-width: 240px;
+    max-width: 650px;
+    flex-shrink: 0;
+}
+
+.column-center {
+    flex: 1;
+    min-width: 300px;
+    border-right: 1px solid var(--border-subtle);
+}
+
+.column-right {
+    width: var(--col-right-width, 360px);
+    min-width: 260px;
+    max-width: 700px;
+    flex-shrink: 0;
+    border-right: none;
+}
 
 /* Resize Handle */
 .resize-handle {
-    width:4px; cursor:col-resize; background:transparent;
-    transition: background var(--dur) var(--ease); z-index:5; position:relative;
+    width: 6px;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 15;
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease;
 }
+
+/* Larger hit-box for easy mouse/touch grabbing */
+.resize-handle::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -5px;
+    right: -5px;
+    cursor: col-resize;
+    z-index: 1;
+}
+
+/* Visual divider line & center pill indicator */
 .resize-handle::after {
-    content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-    width:2px; height:40px; border-radius:2px; background:var(--border-default);
-    opacity:0; transition: opacity var(--dur) var(--ease);
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 48px;
+    border-radius: 4px;
+    background: var(--border-default);
+    opacity: 0.35;
+    transition: all 0.2s ease;
+    z-index: 2;
 }
-.resize-handle:hover::after, .resize-handle.active::after { opacity:1; background:var(--accent); }
-.resize-handle:hover, .resize-handle.active { background: var(--accent-bg); }
+
+.resize-handle:hover,
+.resize-handle.resizing {
+    background: var(--accent-bg);
+}
+
+.resize-handle:hover::after,
+.resize-handle.resizing::after {
+    opacity: 1;
+    height: 64px;
+    width: 4px;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow, rgba(56, 189, 248, 0.6));
+}
 
 /* ─── FULLSCREEN CONFIG MODE ────────────────────────────────────── */
 body.config-fullscreen-mode .column-left {
@@ -1268,9 +1348,23 @@ body.config-fullscreen-mode .passwords-grid {
 .conn-status.failed   { color: var(--danger); }
 
 /* ─── RESPONSIVE ────────────────────────────────────────────────── */
-@media (max-width:1200px) {
-    .column-left  { width:340px; min-width:300px; }
-    .column-right { width:320px; min-width:260px; }
+@media (max-width: 1200px) {
+    .column-left  { width: var(--col-left-width, 340px); min-width: 240px; }
+    .column-right { width: var(--col-right-width, 320px); min-width: 260px; }
 }
-@media (max-width:960px) { .column-right { display:none; } }
-@media (max-width:720px) { .column-left { width:100%; max-width:none; } .column-center { display:none; } }
+@media (max-width: 960px) {
+    .column-right,
+    .resize-handle[data-direction="right"] {
+        display: none !important;
+    }
+}
+@media (max-width: 720px) {
+    .column-left {
+        width: 100% !important;
+        max-width: none !important;
+    }
+    .column-center,
+    .resize-handle {
+        display: none !important;
+    }
+}

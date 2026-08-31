@@ -1182,114 +1182,202 @@ function escapeHtml(text) {
 }
 
 /* ================================================
-   COLUMN RESIZE FUNCTIONALITY
+   DYNAMIC COLUMN RESIZE & LOCALSTORAGE PERSISTENCE
    ================================================ */
 (function initColumnResize() {
     const container = document.querySelector('.main-container');
     const handles = document.querySelectorAll('.resize-handle');
+    const colLeft = document.querySelector('[data-column="left"]');
+    const colRight = document.querySelector('[data-column="right"]');
     
-    // Disable resize on tablets and below
+    if (!container || handles.length === 0) return;
+    
     function isResizeEnabled() {
-        return window.innerWidth > 1024;
+        return window.innerWidth > 960;
     }
     
-    // Load saved widths from localStorage
+    // Default fallback widths (px)
+    const DEFAULT_LEFT_WIDTH = 380;
+    const DEFAULT_RIGHT_WIDTH = 360;
+    
+    // Dynamic boundaries (px)
+    const MIN_LEFT = 240;
+    const MAX_LEFT = 650;
+    const MIN_RIGHT = 260;
+    const MAX_RIGHT = 700;
+    const MIN_CENTER = 300;
+    
+    function applyWidth(direction, width, save = true) {
+        if (direction === 'left') {
+            const clamped = Math.max(MIN_LEFT, Math.min(MAX_LEFT, width));
+            container.style.setProperty('--col-left-width', clamped + 'px');
+            if (colLeft) colLeft.style.width = clamped + 'px';
+            if (save) {
+                try { localStorage.setItem('col-left-width', clamped); } catch (e) {}
+            }
+        } else if (direction === 'right') {
+            const clamped = Math.max(MIN_RIGHT, Math.min(MAX_RIGHT, width));
+            container.style.setProperty('--col-right-width', clamped + 'px');
+            if (colRight) colRight.style.width = clamped + 'px';
+            if (save) {
+                try { localStorage.setItem('col-right-width', clamped); } catch (e) {}
+            }
+        }
+    }
+    
+    // Load saved widths from localStorage on load
     function loadSavedWidths() {
         if (!isResizeEnabled()) return;
         
-        const savedLeftWidth = localStorage.getItem('col-left-width');
-        const savedRightWidth = localStorage.getItem('col-right-width');
-        
-        if (savedLeftWidth) {
-            container.style.setProperty('--col-left-width', savedLeftWidth + 'px');
-        }
-        if (savedRightWidth) {
-            container.style.setProperty('--col-right-width', savedRightWidth + 'px');
+        try {
+            const savedLeft = localStorage.getItem('col-left-width');
+            const savedRight = localStorage.getItem('col-right-width');
+            
+            if (savedLeft) {
+                const parsedLeft = parseInt(savedLeft, 10);
+                if (!isNaN(parsedLeft) && parsedLeft >= MIN_LEFT && parsedLeft <= MAX_LEFT) {
+                    applyWidth('left', parsedLeft, false);
+                }
+            }
+            if (savedRight) {
+                const parsedRight = parseInt(savedRight, 10);
+                if (!isNaN(parsedRight) && parsedRight >= MIN_RIGHT && parsedRight <= MAX_RIGHT) {
+                    applyWidth('right', parsedRight, false);
+                }
+            }
+        } catch (e) {
+            console.warn('Could not load column widths from localStorage:', e);
         }
     }
     
-    loadSavedWidths();
+    // Initialize immediately or on DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadSavedWidths);
+    } else {
+        loadSavedWidths();
+    }
     
-    // Re-apply saved widths on window resize if screen becomes large enough
     window.addEventListener('resize', function() {
         if (isResizeEnabled()) {
             loadSavedWidths();
+        } else {
+            // Clear explicit width inline styles on smaller screens so responsive CSS takes over
+            if (colLeft) colLeft.style.width = '';
+            if (colRight) colRight.style.width = '';
         }
     });
     
     handles.forEach(handle => {
+        const direction = handle.dataset.direction; // 'left' or 'right'
         let isResizing = false;
         let startX = 0;
         let startWidth = 0;
-        let targetColumn = null;
-        const direction = handle.dataset.direction; // 'left' or 'right'
+        let targetColumn = direction === 'left' ? colLeft : colRight;
         
-        handle.addEventListener('mousedown', function(e) {
-            // Don't allow resize on small screens
+        // Double-click to reset column to default width
+        handle.addEventListener('dblclick', function(e) {
+            e.preventDefault();
             if (!isResizeEnabled()) return;
             
-            e.preventDefault();
-            isResizing = true;
-            startX = e.pageX;
-            handle.classList.add('resizing');
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-            
-            // Get the column to resize
             if (direction === 'left') {
-                targetColumn = document.querySelector('[data-column="left"]');
+                applyWidth('left', DEFAULT_LEFT_WIDTH, true);
             } else {
-                targetColumn = document.querySelector('[data-column="right"]');
+                applyWidth('right', DEFAULT_RIGHT_WIDTH, true);
             }
-            
-            startWidth = targetColumn.offsetWidth;
-            
-            // Add event listeners to document for better tracking
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
         });
         
-        function onMouseMove(e) {
+        function onPointerDown(clientX, e) {
+            if (!isResizeEnabled()) return;
+            if (document.body.classList.contains('config-fullscreen-mode')) return;
+            
+            if (e && e.preventDefault) e.preventDefault();
+            isResizing = true;
+            startX = clientX;
+            
+            targetColumn = direction === 'left' ? document.querySelector('[data-column="left"]') : document.querySelector('[data-column="right"]');
+            if (!targetColumn) return;
+            
+            startWidth = targetColumn.getBoundingClientRect().width;
+            
+            handle.classList.add('resizing');
+            document.body.classList.add('is-resizing');
+            
+            window.addEventListener('mousemove', onMouseMove, { passive: false });
+            window.addEventListener('mouseup', onMouseUp);
+            window.addEventListener('touchmove', onTouchMove, { passive: false });
+            window.addEventListener('touchend', onTouchEnd);
+        }
+        
+        function onPointerMove(clientX) {
+            if (!isResizing || !targetColumn) return;
+            
+            const totalAvailable = container.clientWidth;
+            const otherCol = direction === 'left' ? colRight : colLeft;
+            const otherColumnWidth = (otherCol && otherCol.offsetParent) ? otherCol.getBoundingClientRect().width : 0;
+            
+            const maxAllowedForThisColumn = Math.max(
+                direction === 'left' ? MIN_LEFT : MIN_RIGHT,
+                totalAvailable - otherColumnWidth - MIN_CENTER - 16
+            );
+            
+            const deltaX = direction === 'left' ? (clientX - startX) : (startX - clientX);
+            let calculatedWidth = startWidth + deltaX;
+            
+            const upperLimit = Math.min(direction === 'left' ? MAX_LEFT : MAX_RIGHT, maxAllowedForThisColumn);
+            const lowerLimit = direction === 'left' ? MIN_LEFT : MIN_RIGHT;
+            
+            calculatedWidth = Math.max(lowerLimit, Math.min(upperLimit, calculatedWidth));
+            
+            applyWidth(direction, calculatedWidth, false);
+        }
+        
+        function onPointerUp() {
             if (!isResizing) return;
+            isResizing = false;
             
-            const deltaX = direction === 'left' ? (e.pageX - startX) : (startX - e.pageX);
-            let newWidth = startWidth + deltaX;
+            handle.classList.remove('resizing');
+            document.body.classList.remove('is-resizing');
             
-            // Set min/max constraints
-            const minWidth = 180;
-            const maxWidth = direction === 'left' ? 500 : 600;
-            
-            newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-            
-            // Update the CSS variable
-            if (direction === 'left') {
-                container.style.setProperty('--col-left-width', newWidth + 'px');
-            } else {
-                container.style.setProperty('--col-right-width', newWidth + 'px');
+            if (targetColumn) {
+                const finalWidth = Math.round(targetColumn.getBoundingClientRect().width);
+                applyWidth(direction, finalWidth, true);
             }
+            
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEnd);
+        }
+        
+        function onMouseMove(e) {
+            e.preventDefault();
+            onPointerMove(e.clientX);
         }
         
         function onMouseUp() {
-            if (!isResizing) return;
-            
-            isResizing = false;
-            handle.classList.remove('resizing');
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-            
-            // Save to localStorage
-            if (direction === 'left') {
-                const width = targetColumn.offsetWidth;
-                localStorage.setItem('col-left-width', width);
-            } else {
-                const width = targetColumn.offsetWidth;
-                localStorage.setItem('col-right-width', width);
-            }
-            
-            // Remove event listeners
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
+            onPointerUp();
         }
+        
+        function onTouchMove(e) {
+            if (e.touches && e.touches.length > 0) {
+                e.preventDefault();
+                onPointerMove(e.touches[0].clientX);
+            }
+        }
+        
+        function onTouchEnd() {
+            onPointerUp();
+        }
+        
+        handle.addEventListener('mousedown', function(e) {
+            onPointerDown(e.clientX, e);
+        });
+        
+        handle.addEventListener('touchstart', function(e) {
+            if (e.touches && e.touches.length > 0) {
+                onPointerDown(e.touches[0].clientX, e);
+            }
+        }, { passive: true });
     });
 })();
 

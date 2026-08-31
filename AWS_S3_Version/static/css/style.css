@@ -421,7 +421,7 @@ body {
     z-index: 10;
     display: grid;
     /* Prioritize the Right Column: Left is flexible, Middle takes remaining, Right is stable */
-    grid-template-columns: minmax(220px, 18%) 4px 1fr 4px minmax(320px, 22%);
+    grid-template-columns: var(--col-left-width, minmax(220px, 18%)) 6px 1fr 6px var(--col-right-width, minmax(320px, 22%));
     gap: 0;
     height: calc(100vh - 56px);
     background: linear-gradient(180deg, rgba(99, 102, 241, 0.1), transparent);
